@@ -433,10 +433,11 @@ storing `{ defaultMode: "ask" | "auto" | "always" | "never", defaultRepo }`.
    rederive in R rows and onboarding in O rows. Not routing, but seen: the
    own-repo guess said cs50final is "likely someone else's" (few commits
    with the learner's git email) although R2 says "my CS50 final project"
-   and O4 "I wrote it". Fixed with the user: the learner's words decide
-   ownership; the git guess counts only when they said nothing, and the
-   teacher asks once (card) only when the two disagree and it can't tell.
-   Not yet checked in the app: R2 should now open with "Why did you build this?".
+   and O4 "I wrote it". Fixed with the user: the teacher uses the learner's
+   words or the git guess when only one says anything or both agree; when
+   they disagree it picks neither and asks once with a card.
+   Not yet checked in the app: R2 should now get that card before the
+   opening question.
 8. **README.** What it does, install, modes, screenshots placeholder, credits.
 
 ### Skills to use per step
@@ -492,8 +493,8 @@ report are built; next: the user runs them, then tune from failures.
 - Concept gaps inside rederive: name the gap, teach it in 1–2 short messages, check
   with one question, repeat the same constraint. Mode stays rederive.
 - Own repo → "Why did you build this?"; someone else's or unknown → pose the root
-  problem. The learner's words decide ownership over the git-email guess; a
-  card asks only when the two disagree and the agent can't tell (changed in step 7).
+  problem. When the learner's words and the git-email guess disagree about
+  ownership, a card asks them (changed in step 7).
 - Cards show fixed text only ("Problem loaded", "Progress logged", …), never ids,
   counts or map content. `rederive_open_repo` keeps the host card.
 - `rederive_status` lists problem titles with [done]/[skipped] marks for the agent

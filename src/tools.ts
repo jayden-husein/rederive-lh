@@ -71,8 +71,8 @@ export interface OpenRepoDetails {
   earlierMap?: { logged: number };
 }
 
-// A guess from git emails only: the learner's own words about who wrote it win.
-const GUESS_ONLY = "A guess from git history: what the learner says about who wrote it wins.";
+// A guess from git emails only; when the learner's words disagree, the teacher asks.
+const GUESS_ONLY = "A guess from git history: if the learner says otherwise, ask them.";
 
 function ownershipLine(o: Ownership): string {
   if (o.guess === "own") return `Likely the learner's own repo (${Math.round((o.share ?? 0) * 100)}% of recent commits use their git email). ${GUESS_ONLY}`;
