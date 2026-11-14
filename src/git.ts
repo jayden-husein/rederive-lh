@@ -18,6 +18,8 @@ export interface GitOptions {
   signal?: AbortSignal;
   /** Output cap in bytes; longer output fails rather than exhausting memory. */
   maxBuffer?: number;
+  /** Extra environment variables for this call only. */
+  env?: Record<string, string>;
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -53,7 +55,7 @@ export function runGit(args: readonly string[], options: GitOptions): Promise<st
         signal: options.signal,
         windowsHide: true,
         encoding: "utf8",
-        env: { ...process.env, ...ENV_OVERRIDES },
+        env: { ...process.env, ...options.env, ...ENV_OVERRIDES },
       },
       (error, stdout, stderr) => {
         if (!error) return resolve(stdout);

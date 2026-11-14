@@ -12,6 +12,7 @@
     "sdk": "node scripts/sdk.ts",
     "build": "node scripts/build.ts",
     "typecheck": "tsc --noEmit",
+    "summary": "node scripts/summary.ts",
     "test": "node --test \"tests/**/*.test.ts\""
   },
   "devDependencies": {
