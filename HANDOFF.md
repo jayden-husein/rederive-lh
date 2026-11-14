@@ -463,3 +463,9 @@ findings are step 6; step 6 awaits the user's re-test).
 - The top-bar action's `context.sessionId` is the same id as the tools'
   `PluginToolContext.chatId`. The SDK types don't say so. If the action's mode
   change doesn't show up in the chat, this is why.
+- An attached folder appears in the *unsent* composer text as a backtick path
+  (it does in the sent message). The session view exposes only `composer.text`,
+  no attachment list. If the start dialog isn't prefilled from an attached
+  folder, this is why.
+- The teacher follows rules carried in a tool description (`rederive_status`)
+  as reliably as it did the system-prompt instructions.
