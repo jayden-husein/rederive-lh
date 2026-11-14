@@ -3,6 +3,7 @@
 // A skipped problem gets a section whose body is just "skipped": it is deferred, not
 // done, and comes back once every untouched problem has been run.
 import { readFile } from "node:fs/promises";
+import { PART_LABELS, type PartTag } from "./authorship.ts";
 import type { Decision } from "./map.ts";
 
 export interface LogEntry {
@@ -11,6 +12,8 @@ export interface LogEntry {
   didWell: string;
   didOk: string;
   betterIdea?: string;
+  /** Whose code the problem is about, when the chat recorded which parts the learner wrote. */
+  part?: Exclude<PartTag, "unknown">;
 }
 
 const SKIPPED_BODY = "skipped";
@@ -32,6 +35,7 @@ export function formatLogEntry(decision: Pick<Decision, "id" | "title">, entry: 
     `did well: ${oneLine(entry.didWell)}`,
     `did ok: ${oneLine(entry.didOk)}`,
   ];
+  if (entry.part) lines.push(`whose part: ${PART_LABELS[entry.part]}`);
   if (entry.betterIdea?.trim()) lines.push(`better idea: ${oneLine(entry.betterIdea)}`);
   return `${lines.join("\n")}\n`;
 }

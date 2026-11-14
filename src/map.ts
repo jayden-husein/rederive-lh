@@ -2,6 +2,7 @@
 // the `build-map` worker. Defines the worker's result schema, the semantic checks the
 // schema can't express, and the markdown rendering (rederive's map.md format).
 import { Type, type Static } from "typebox";
+import { isRepoRelative } from "./authorship.ts";
 
 export const MIN_DECISIONS = 5;
 export const MAX_DECISIONS = 10;
@@ -42,6 +43,15 @@ export const DecisionSchema = Type.Object(
       ),
       { minItems: 2, maxItems: 4, description: "2 to 4 approaches, including the real one." },
     ),
+    files: Type.Array(Text("A repo-relative path with forward slashes: a file, or a folder ending in /.", 300), {
+      minItems: 1,
+      maxItems: 12,
+      description: "Where this decision lives in the code.",
+    }),
+    needs: Type.Array(Type.String({ pattern: "^D([1-9]|10)$" }), {
+      maxItems: 9,
+      description: "Earlier decisions this one directly builds on; [] for none.",
+    }),
     evidence: Text('Commits (short sha and message) and file paths, or "code only".'),
   },
   { additionalProperties: false },
@@ -55,8 +65,10 @@ export const DecisionMapResultSchema = Type.Object(
   { additionalProperties: false },
 );
 
-export type Decision = Static<typeof DecisionSchema>;
-export type DecisionMapResult = Static<typeof DecisionMapResultSchema>;
+type WorkerDecision = Static<typeof DecisionSchema>;
+/** A map decision. Maps built before step 8 have no `files` or `needs`. */
+export type Decision = Omit<WorkerDecision, "files" | "needs"> & Partial<Pick<WorkerDecision, "files" | "needs">>;
+export type DecisionMapResult = Omit<Static<typeof DecisionMapResultSchema>, "decisions"> & { decisions: Decision[] };
 
 /** What we store in map.json: the worker's result plus where it came from. */
 export interface StoredMap extends DecisionMapResult {
@@ -88,6 +100,15 @@ export function validateMapResult(result: unknown): asserts result is DecisionMa
     if (key && earlier) problems.push(`${d.id} and ${earlier} have the same technique "${d.decision.technique}"; each decision must be a different mechanism.`);
     else if (key) techniques.set(key, d.id);
   }
+  decisions.forEach((d, i) => {
+    for (const need of Array.isArray(d?.needs) ? d.needs : []) {
+      const at = Number(String(need).slice(1)) - 1;
+      if (!(at >= 0 && at < i)) problems.push(`${d.id}.needs has "${need}"; needs may only name earlier decisions (D1 to D${i}).`);
+    }
+    for (const file of Array.isArray(d?.files) ? d.files : []) {
+      if (!isRepoRelative(String(file))) problems.push(`${d.id}.files has "${file}"; use paths relative to the repo root, without "..".`);
+    }
+  });
   if (problems.length) throw new Error(`Fix the map and submit again:\n- ${problems.join("\n- ")}`);
 }
 
@@ -109,6 +130,8 @@ export function renderMapMarkdown(map: StoredMap): string {
       `- Decision: ${d.decision.technique}: ${d.decision.definition} In this code: ${d.decision.inThisCode}`,
       "- Options:",
       ...d.options.map((o) => `  - ${o.approach}: ${o.tradeoff}`),
+      ...(d.files ? [`- Files: ${d.files.join(", ")}`] : []),
+      ...(d.needs ? [`- Needs: ${d.needs.join(", ") || "none"}`] : []),
       `- Evidence: ${d.evidence}`,
     );
   }

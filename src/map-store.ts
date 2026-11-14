@@ -8,6 +8,7 @@ import { readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { PluginTaskSnapshot } from "learnharness-plugin-api";
 import { writeFileAtomic } from "./atomic.ts";
+import { planProblems, tagDecision, type PartTag } from "./authorship.ts";
 import { carryOverLog, formatLogEntry, formatSkipEntry, nextProblem as nextProblemIn, parseLog, readLog, type LogEntry, type LogProgress } from "./log.ts";
 import { renderMapMarkdown, validateMapResult, type Decision, type DecisionMapResult, type StoredMap } from "./map.ts";
 
@@ -66,13 +67,28 @@ export interface NextProblem {
   decision: Decision;
   /** True when the learner skipped this one earlier and it is coming back. */
   revisit: boolean;
+  /** Whose code it is about; null when the chat recorded no authorship. */
+  tag: PartTag | null;
+  /** Set when it runs early because this own problem builds on it. */
+  prerequisiteFor: string | null;
 }
+
+/** Which parts of the repo the learner wrote (repo-relative), or null when not recorded. */
+export type Parts = readonly string[] | null;
 
 export type LogResult = { decision: Decision; next: NextProblem | null; file: string; map: StoredMap };
 
-function pickNext(map: StoredMap, progress: LogProgress): NextProblem | null {
-  const decision = nextProblemIn(map.decisions, progress);
-  return decision ? { decision, revisit: progress.skipped.includes(decision.id) } : null;
+function pickNext(map: StoredMap, progress: LogProgress, parts: Parts): NextProblem | null {
+  const plan = planProblems(map.decisions, parts);
+  const picked = nextProblemIn(plan.map((p) => ({ ...p, id: p.decision.id })), progress);
+  if (!picked) return null;
+  return {
+    decision: picked.decision,
+    revisit: progress.skipped.includes(picked.id),
+    tag: picked.tag,
+    // The own problem it was pulled forward for may already be done (run by id).
+    prerequisiteFor: picked.prerequisiteFor && !progress.done.has(picked.prerequisiteFor) ? picked.prerequisiteFor : null,
+  };
 }
 
 export class MapStore {
@@ -134,9 +150,12 @@ export class MapStore {
     return parseLog(await readLog(this.logFile(repoId)));
   }
 
-  /** Untouched problems first in map order, then skipped ones; null once all are done. */
-  async nextProblem(repoId: string, map: StoredMap): Promise<NextProblem | null> {
-    return pickNext(map, await this.progress(repoId));
+  /**
+   * Untouched problems first, then skipped ones; null once all are done. Map order, or with
+   * `parts` the learner's own problems first (see planProblems).
+   */
+  async nextProblem(repoId: string, map: StoredMap, parts: Parts = null): Promise<NextProblem | null> {
+    return pickNext(map, await this.progress(repoId), parts);
   }
 
   /**
@@ -144,7 +163,7 @@ export class MapStore {
    * atomically. Looks the map up under the same lock as adoption, so the entry always
    * matches the map it was run from. A skipped problem can be skipped again or finished.
    */
-  logProblem(repoId: string, id: string, entry: LogEntry | "skipped", signal?: AbortSignal): Promise<LogResult> {
+  logProblem(repoId: string, id: string, entry: LogEntry | "skipped", signal?: AbortSignal, parts: Parts = null): Promise<LogResult> {
     return this.serialize(async () => {
       const map = await this.adopt(repoId);
       if (!map) throw new Error("No map for this repo yet.");
@@ -154,11 +173,14 @@ export class MapStore {
       const existing = await readLog(file);
       if (parseLog(existing).done.has(id)) throw new Error(`${id} is already logged as finished.`);
       if (signal?.aborted) throw new Error("Rederive tool cancelled.");
-      const section = entry === "skipped" ? formatSkipEntry(decision) : formatLogEntry(decision, entry);
+      const tag = parts ? tagDecision(decision, parts) : "unknown";
+      const section = entry === "skipped"
+        ? formatSkipEntry(decision)
+        : formatLogEntry(decision, tag === "unknown" ? entry : { ...entry, part: tag });
       const separator = existing === "" || existing.endsWith("\n\n") ? "" : existing.endsWith("\n") ? "\n" : "\n\n";
       const updated = `${existing}${separator}${section}`;
       await writeFileAtomic(file, updated);
-      return { decision, next: pickNext(map, parseLog(updated)), file, map };
+      return { decision, next: pickNext(map, parseLog(updated), parts), file, map };
     });
   }
 

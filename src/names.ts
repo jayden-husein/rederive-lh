@@ -5,6 +5,7 @@ export const TOOL_NAMES = {
   openRepo: "rederive_open_repo",
   setMode: "rederive_set_mode",
   status: "rederive_status",
+  setAuthorship: "rederive_set_authorship",
   buildMap: "rederive_build_map",
   nextProblem: "rederive_next_problem",
   logProblem: "rederive_log_problem",

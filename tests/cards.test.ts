@@ -8,6 +8,7 @@ const done = (toolName: string, output: unknown, extra: object = {}) => cardText
 test("each tool gets a short fixed card", () => {
   assert.equal(done("rederive_set_mode", { mode: "onboarding" }), "Mode: Onboarding");
   assert.equal(done("rederive_status", { mode: "rederive" }), "Checked rederive progress");
+  assert.equal(done("rederive_set_authorship", { parts: ["querier"], missing: [] }), "Recorded which parts you wrote");
   assert.equal(done("rederive_build_map", {}), "Building the decision map in the background…");
   assert.equal(done("rederive_build_map", { count: 6 }, { background: {} }), "Decision map ready");
   assert.equal(done("rederive_build_map", { status: "failed" }, { background: {} }), "Decision map failed");

@@ -211,3 +211,19 @@ export async function guessOwnership(root: string, signal?: AbortSignal): Promis
   const share = authors.filter((a) => a === email).length / authors.length;
   return { guess: share >= 0.5 ? "own" : "other", share: Math.round(share * 100) / 100 };
 }
+
+const SKIPPED_FOLDERS = new Set(["node_modules", "vendor", "dist", "build", "target", "out", "__pycache__"]);
+const MAX_FOLDERS = 15;
+
+/**
+ * The repo's top-level folders ("crawler/", ...), for the "which parts did you write?"
+ * card. Hidden, dependency and build-output folders are left out.
+ */
+export async function topLevelFolders(root: string): Promise<string[]> {
+  const entries = await readdir(root, { withFileTypes: true });
+  return entries
+    .filter((e) => e.isDirectory() && !e.name.startsWith(".") && !SKIPPED_FOLDERS.has(e.name.toLowerCase()))
+    .map((e) => `${e.name}/`)
+    .sort()
+    .slice(0, MAX_FOLDERS);
+}

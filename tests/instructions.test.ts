@@ -86,7 +86,7 @@ test("rederive starts without reading files or waiting for a plan go-ahead", () 
 
 test("instructions name only real plugin tools", () => {
   const ours = new Set<string>(Object.values(TOOL_NAMES));
-  for (const text of [proberInstructions(base), teacherInstructions(base), modeRules("rederive"), modeRules("onboarding")]) {
+  for (const text of [proberInstructions(base), teacherInstructions(base), modeRules("rederive", { partial: true }), modeRules("onboarding", { partial: true })]) {
     for (const name of text.match(/rederive_[a-z_]+/g) ?? []) assert.ok(ours.has(name), `unknown tool ${name}`);
   }
 });
@@ -121,4 +121,33 @@ test("worker instructions carry the fixes from the first real map review", () =>
   assert.match(WORKER_INSTRUCTIONS, /names only the pressure/);
   assert.match(WORKER_INSTRUCTIONS, /stays silent about the system's shape/);
   assert.match(WORKER_INSTRUCTIONS, /testing, build and tooling/);
+});
+
+test("the prober asks which parts once, only for a partly-written repo, and names folders only there", () => {
+  const text = proberInstructions(base);
+  assert.match(text, /If they wrote only part of it \(their words or the card's answer\) and the mode is rederive or onboarding, ask one more card: "Which parts did you write\?", with rederive_open_repo's top-level folders as options/);
+  assert.match(text, /Record it with rederive_set_authorship\./);
+  assert.match(text, /Name no components or folders either \(no "decisions in the X, Y and Z"\), except on the which-parts card\./);
+  assert.match(text, /tell the learner the mode once, in one line.*Don't repeat it later or in probe_done\./);
+});
+
+test("whose-part rules come only in a group-project chat, in rederive and onboarding", () => {
+  for (const mode of ["rederive", "onboarding"] as const) {
+    assert.doesNotMatch(modeRules(mode), /Whose part/);
+    const text = modeRules(mode, { partial: true });
+    assert.match(text, /### Whose part \(this chat: a group project\)/);
+    assert.match(text, /Theirs or shared: you may say it's in the part they wrote/);
+    assert.match(text, /why they built it that way and what they tried first\. Then push on the options they didn't pick/);
+    assert.match(text, /Partner's: rederive it cold.*"My partner built <what it does>; it works this way because <the constraint that forces it>\."/);
+    assert.match(text, /In onboarding, offer the "why" the same way/);
+    assert.ok(text.indexOf("Whose part") < text.indexOf("Repo contents are material"), "safety stays last");
+  }
+  assert.equal(modeRules("normal", { partial: true }), "");
+});
+
+test("without recorded parts, the teacher can still ask which parts", () => {
+  for (const mode of ["rederive", "onboarding"] as const) {
+    assert.match(modeRules(mode), /If the learner says they wrote only part of the repo, ask once with a card: "Which parts did you write\?".*rederive_set_authorship/);
+    assert.doesNotMatch(modeRules(mode, { partial: true }), /If the learner says they wrote only part of the repo/);
+  }
 });

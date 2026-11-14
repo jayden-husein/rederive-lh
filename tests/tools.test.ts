@@ -8,7 +8,7 @@ import { MapStore } from "../src/map-store.ts";
 import { SessionStore } from "../src/sessions.ts";
 import { buildMapDefinition, createTools, openRepoForChat, type ToolDeps } from "../src/tools.ts";
 import { BUILD_LIMITS } from "../src/worker.ts";
-import { makeGitRepo, removeDir, SAMPLE_README, succeededTask, tempDir } from "./helpers.ts";
+import { makeGitRepo, removeDir, SAMPLE_README, sampleMapResult, succeededTask, tempDir } from "./helpers.ts";
 
 let workspace: string;
 let repo: string;
@@ -52,6 +52,7 @@ function tools(chatId: string) {
     nextProblem: byName("rederive_next_problem"),
     logProblem: byName("rederive_log_problem"),
     skipProblem: byName("rederive_skip_problem"),
+    setAuthorship: byName("rederive_set_authorship"),
   };
 }
 
@@ -246,7 +247,7 @@ test("after the last problem, next_problem points to the log", async () => {
 
 test("problem tools are only in the teacher's loadout once the chat has a repo", () => {
   const names = (chatId: string, agent: "prober" | "teacher") => createTools(deps, { chatId, agent }).map((t) => t.name);
-  const routing = ["rederive_open_repo", "rederive_set_mode", "rederive_status", "rederive_build_map"];
+  const routing = ["rederive_open_repo", "rederive_set_mode", "rederive_status", "rederive_set_authorship", "rederive_build_map"];
   assert.deepEqual(names("chat-none", "teacher"), routing);
   assert.deepEqual(names("chat-a", "prober"), routing);
   assert.deepEqual(names("chat-a", "teacher"), [...routing, "rederive_next_problem", "rederive_log_problem", "rederive_skip_problem"]);
@@ -291,6 +292,81 @@ test("status's description carries the chat's saved mode and repo, read synchron
   await fresh.setMode("c", "rederive");
   assert.match(describe("c"), /mode rederive, repo "tiny-search"\./);
   assert.match(describe("other"), /mode not set, repo none\./);
+});
+
+// --- group projects: which parts the learner wrote ------------------------
+
+test("a group project: own problems first with their prerequisites, tagged, and the log says whose part", async () => {
+  const group = makeGitRepo(join(workspace, "group"), [
+    { files: { "crawler/c.c": "\n", "common/p.c": "\n", "querier/q.c": "\n", ".github/ci.yml": "\n" }, message: "initial" },
+  ]);
+  const t0 = tools("chat-g");
+  const opened = await t0.openRepo.execute("1", { source: group });
+  assert.deepEqual(opened.details.folders, ["common/", "crawler/", "querier/"]);
+  assert.match(textOf(opened), /Top-level folders: common\/, crawler\/, querier\/\. Name them only as options on the "Which parts did you write\?" card\./);
+  await t0.setMode.execute("2", { mode: "rederive" });
+
+  const recorded = await tools("chat-g").setAuthorship.execute("3", { parts: ["querier\\", "nope/"] });
+  assert.deepEqual(recorded.details, { parts: ["querier", "nope"], missing: ["nope"] });
+  assert.match(textOf(recorded), /Not found in the repo: nope/);
+  await assert.rejects(tools("chat-g").setAuthorship.execute("4", { parts: ["../x"] }), /without "\.\."/);
+  await tools("chat-g").setAuthorship.execute("5", { parts: ["querier/"] });
+
+  const result = sampleMapResult(5);
+  const layout: [string[], string[]][] = [
+    [["crawler/c.c"], []],
+    [["common/p.c"], ["D1"]],
+    [["querier/q.c"], []],
+    [["querier/q.c"], ["D2", "D3"]],
+    [["querier/q.c", "common/p.c"], ["D4"]],
+  ];
+  layout.forEach(([files, needs], i) => Object.assign(result.decisions[i]!, { files, needs }));
+  const repoId = (await deps.store.getChat("chat-g")).repo!.id;
+  tasks.push(succeededTask("tg", repoId, "2026-11-14T11:00:00.000Z", result));
+
+  const t = tools("chat-g");
+  assert.match(t.status.description, /### Whose part \(this chat: a group project\)/);
+  assert.doesNotMatch(tools("chat-a").status.description, /### Whose part/);
+  const s = await t.status.execute("6", {});
+  assert.deepEqual(s.details.parts, ["querier"]);
+  assert.equal(s.details.nextProblemId, "D3");
+  assert.match(textOf(s), /Group project: the learner wrote querier\. Their problems come first\./);
+  assert.match(textOf(s), / {2}D1\. Problem 1 \(partner's\)\n {2}D2\. Problem 2 \(partner's\)\n {2}D3\. Problem 3 \(theirs\)\n {2}D4\. Problem 4 \(theirs\)\n {2}D5\. Problem 5 \(shared\)/);
+
+  const first = await t.nextProblem.execute("7", {});
+  assert.equal(first.details.id, "D3");
+  assert.match(textOf(first), /Whose part: theirs\. You may tell them it's in the part they wrote\./);
+
+  // D4 needs D2, which needs D1: both run next, marked as prerequisites of D4.
+  const logged = await t.logProblem.execute("8", { id: "D3", struggled: "s", foundAlone: "f", didWell: "w", didOk: "o" });
+  assert.equal(logged.details.nextProblemId, "D1");
+  assert.match(textOf(logged), /Whose part: partner's\.\nRuns now because D4, in their part, builds on it/);
+  assert.match(readFileSync(deps.maps.logFile(repoId), "utf8"), /^## D3\. Problem 3\n(.+\n){4}whose part: theirs\n$/);
+
+  await t.skipProblem.execute("9", { id: "D1" });
+  assert.equal((await t.nextProblem.execute("10", {})).details.id, "D2");
+  const shared = await t.nextProblem.execute("11", { id: "D5" });
+  assert.match(textOf(shared), /Whose part: shared\. You may tell them it spans their part and their partner's\./);
+});
+
+test("a prerequisite loses its reason once its own problem is done, and [\".\"] clears the parts", async () => {
+  const t = tools("chat-g");
+  // D3 done, D1 skipped above; D4 (theirs) is finished out of order, so D2 no longer runs "for" it.
+  const logged = await t.logProblem.execute("1", { id: "D4", struggled: "s", foundAlone: "f", didWell: "w", didOk: "o" });
+  assert.equal(logged.details.nextProblemId, "D2");
+  assert.doesNotMatch(textOf(logged), /Runs now because/);
+  await assert.rejects(t.setAuthorship.execute("2", { parts: [String.raw`\\server\share\x`] }), /relative to the repo root/);
+  const cleared = await t.setAuthorship.execute("3", { parts: ["."] });
+  assert.deepEqual(cleared.details, { parts: [], missing: [] });
+  assert.equal((await t.status.execute("4", {})).details.parts, null);
+  assert.doesNotMatch(tools("chat-g").status.description, /### Whose part/);
+});
+
+test("without recorded parts, problems carry no whose-part line and the log has none", async () => {
+  const t = tools("chat-a");
+  const next = await t.nextProblem.execute("1", {});
+  assert.doesNotMatch(textOf(next), /Whose part|Runs now because/);
+  assert.doesNotMatch(readFileSync(deps.maps.logFile((await deps.store.getChat("chat-a")).repo!.id), "utf8"), /whose part/);
 });
 
 test("tools refuse to run after the plugin is deactivated", async () => {

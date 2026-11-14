@@ -28,6 +28,8 @@ export interface ChatRecord {
    * chat's repo. Cleared by the next rederive_status call.
    */
   startPending?: string;
+  /** Group project: the repo-relative folders/files the learner wrote. Cleared when the repo changes. */
+  parts?: string[];
   updatedAt: string;
 }
 
@@ -53,12 +55,14 @@ export interface ChatState {
   repo: RepoRecord | null;
   /** When the top-bar action asked for a restart that no status call has seen yet. */
   startPending: string | null;
+  /** Which parts the learner wrote; null when they didn't say (or wrote all of it). */
+  parts: string[] | null;
 }
 
 function chatState(data: SessionsFile, chatId: string): ChatState {
   const chat = data.chats[chatId];
   const repo = chat?.repoId ? data.repos[chat.repoId] ?? null : null;
-  return { mode: chat?.mode ?? null, repo: repo ? { ...repo } : null, startPending: chat?.startPending ?? null };
+  return { mode: chat?.mode ?? null, repo: repo ? { ...repo } : null, startPending: chat?.startPending ?? null, parts: chat?.parts ? [...chat.parts] : null };
 }
 
 export class SessionStore {
@@ -139,6 +143,16 @@ export class SessionStore {
     });
   }
 
+  /** Record which parts of the chat's repo the learner wrote; null clears it (they wrote all of it). */
+  async setParts(chatId: string, parts: readonly string[] | null): Promise<void> {
+    await this.mutate((data) => {
+      const chat: ChatRecord = { ...data.chats[chatId], updatedAt: this.now().toISOString() };
+      if (parts) chat.parts = [...parts];
+      else delete chat.parts;
+      data.chats[chatId] = chat;
+    });
+  }
+
   /** The top-bar action: switch to rederive and ask the agent to restart with the chat's repo. */
   async requestStart(chatId: string): Promise<void> {
     await this.mutate((data) => {
@@ -185,7 +199,10 @@ export class SessionStore {
       const stamp = this.now().toISOString();
       const record: RepoRecord = { ...repo, openedAt: stamp };
       data.repos[repo.id] = record;
-      data.chats[chatId] = { ...data.chats[chatId], repoId: repo.id, updatedAt: stamp };
+      const chat: ChatRecord = { ...data.chats[chatId], repoId: repo.id, updatedAt: stamp };
+      // Which parts they wrote belongs to the repo it was said about.
+      if (data.chats[chatId]?.repoId !== repo.id) delete chat.parts;
+      data.chats[chatId] = chat;
       return { ...record };
     });
   }

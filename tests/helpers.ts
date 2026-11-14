@@ -81,6 +81,8 @@ export function sampleMapResult(count = 5) {
         { approach: "real approach", tradeoff: "good" },
         { approach: "other approach", tradeoff: "worse" },
       ],
+      files: ["index.c"],
+      needs: i === 0 ? [] : [`D${i}`],
       evidence: "code only",
     })),
   };

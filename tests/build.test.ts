@@ -95,7 +95,7 @@ test("backend registers the worker, tools, instructions and frontend operations"
   assert.deepEqual(registration.agents, ["prober", "teacher"]);
   // A chat with no repo gets only the routing tools; tools.test.ts covers the full set.
   const names = registration.create({ chatId: "chat-1", agent: "teacher" }).map((t) => t.name);
-  assert.deepEqual(names, ["rederive_open_repo", "rederive_set_mode", "rederive_status", "rederive_build_map"]);
+  assert.deepEqual(names, ["rederive_open_repo", "rederive_set_mode", "rederive_status", "rederive_set_authorship", "rederive_build_map"]);
   controller.abort();
 });
 
@@ -121,6 +121,7 @@ test("frontend registers the tool cards, settings rows and the top-bar action", 
     "rederive_build_map",
     "rederive_log_problem",
     "rederive_next_problem",
+    "rederive_set_authorship",
     "rederive_set_mode",
     "rederive_skip_problem",
     "rederive_status",

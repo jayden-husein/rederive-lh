@@ -14,7 +14,7 @@ beforeEach(() => {
 afterEach(() => removeDir(data));
 
 const repo = { id: "tiny-abc123", name: "tiny", kind: "local" as const, source: "C:\\tiny", path: "C:\\tiny" };
-const empty = { mode: null, repo: null, startPending: null };
+const empty = { mode: null, repo: null, startPending: null, parts: null };
 
 test("a start request sets rederive and is reported to exactly one takeChat", async () => {
   const store = new SessionStore(data, () => new Date("2026-11-14T08:00:00.000Z"));
@@ -91,4 +91,23 @@ test("a corrupt sessions.json is moved aside, not overwritten", async () => {
   assert.equal(readFileSync(backup, "utf8"), "{ not json");
   await store.setMode("chat-1", "normal");
   assert.equal(JSON.parse(readFileSync(store.file, "utf8")).chats["chat-1"].mode, "normal");
+});
+
+test("which parts the learner wrote persist per chat and are dropped when the chat opens another repo", async () => {
+  const store = new SessionStore(data);
+  await store.setRepo("chat-p", repo);
+  await store.setParts("chat-p", ["querier", "common/index.c"]);
+  assert.deepEqual((await new SessionStore(data).getChat("chat-p")).parts, ["querier", "common/index.c"]);
+  // Reopening the same repo keeps them.
+  await store.setRepo("chat-p", repo);
+  assert.deepEqual((await store.getChat("chat-p")).parts, ["querier", "common/index.c"]);
+  await store.setRepo("chat-p", { ...repo, id: "other-def456", name: "other" });
+  assert.equal((await store.getChat("chat-p")).parts, null);
+});
+
+test("setParts(null) clears what was recorded", async () => {
+  const store = new SessionStore(data);
+  await store.setParts("chat-p", ["querier"]);
+  await store.setParts("chat-p", null);
+  assert.equal((await new SessionStore(data).getChat("chat-p")).parts, null);
 });

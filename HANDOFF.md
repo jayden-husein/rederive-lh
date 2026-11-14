@@ -130,8 +130,8 @@ teacher turns.
 
 | Agent | Always-on text (every turn) | Per-chat text | Plugin tools |
 |---|---|---|---|
-| prober | `proberInstructions` | — | open_repo, set_mode, status, build_map |
-| teacher | `teacherInstructions` | `modeRules(mode)` in `rederive_status`'s description, and in `rederive_set_mode`'s result | the prober's four; + next/log/skip_problem once the chat has a repo |
+| prober | `proberInstructions` | — | open_repo, set_mode, status, set_authorship, build_map |
+| teacher | `teacherInstructions` | `modeRules(mode, { partial })` in `rederive_status`'s description, and in `rederive_set_mode`'s result | the prober's five; + next/log/skip_problem once the chat has a repo |
 | map worker | `WORKER_INSTRUCTIONS` (`src\worker.ts`) | the repo summary in its prompt | its own read-only file and git tools |
 
 The learner sees agent text, `send_to_user`, `ask_user_question` cards,
@@ -345,6 +345,21 @@ are in `docs\history.md`: read it when a step refers to earlier findings.
    one own problem and one partner problem. Check each run with
    `npm run transcript` and `npm run leak-check`. Re-run the routing eval
    afterwards (prober text changes).
+
+   **Built 2026-11-14, waiting for the in-app test.** Decided with the user:
+   the worker records `files` (repo-relative paths) and `needs` (earlier ids it
+   directly builds on) per decision; new tool `rederive_set_authorship({ parts })`;
+   shared problems are taught and ordered like theirs. Maps built before step 8
+   lack both fields: every lower-numbered problem counts as needed, and paths come
+   from `inThisCode`/`evidence` (only paths with a folder plus an extension or a
+   trailing `/`; none → "unknown", run like a partner's). **The cs50final map
+   predates this: pick "start fresh" in the R2 re-run** so tags and needs come
+   from the worker. Code: `src\authorship.ts` (tagging, `planProblems`), parts in
+   `sessions.json`, tag lines in `formatProblemForAgent`, `whose part:` in log
+   entries (finished ones only; skips and "unknown" get none), teach-by-tag rules
+   (`AUTHORSHIP`) or the teacher's own which-parts rule (`WHICH_PARTS`) in
+   `modeRules`. `["."]` clears the parts (wrote all of it). Parts are dropped when
+   the chat opens a different repo.
 9. **README.** What it does, install, modes, screenshots placeholder, credits.
 
 ### Skills to use per step

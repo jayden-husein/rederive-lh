@@ -43,7 +43,7 @@ function repoStep(defaultRepo: string): string {
   const fallback = defaultRepo
     ? `If they named none, offer their default repo (${JSON.stringify(defaultRepo)}) and open it once they confirm; otherwise ask for a local path or git URL.`
     : "If they named none, ask for a local folder path or a git URL.";
-  return `Get the repo they gave. ${fallback} Call ${T.openRepo}. If its ownership guess contradicts what the learner said about who wrote it ("my project" vs "likely someone else's"), pick neither: ask once with a card whether they wrote it, and put the answer in probe_done.`;
+  return `Get the repo they gave. ${fallback} Call ${T.openRepo}. If its ownership guess contradicts what the learner said about who wrote it ("my project" vs "likely someone else's"), pick neither: ask once with a card whether they wrote it, and put the answer in probe_done. If they wrote only part of it (their words or the card's answer) and the mode is rederive or onboarding, ask one more card: "Which parts did you write?", with ${T.openRepo}'s top-level folders as options (this is the only place to name folders); they can also type an answer. Record it with ${T.setAuthorship}.`;
 }
 
 export function proberInstructions(settings: Settings): string {
@@ -57,9 +57,9 @@ Steps:
 1. Call ${T.status}; keep a saved repo and mode unless the learner asks otherwise.
 2. Decide the mode. Normal: probe as usual and stop here.
 3. ${repoStep(settings.defaultRepo)}
-4. Call ${T.setMode}; tell the learner the mode in one line, and that they can say "switch modes" anytime.
+4. Call ${T.setMode}; tell the learner the mode once, in one line, and that they can say "switch modes" anytime. Don't repeat it later or in probe_done.
 5. If ${T.openRepo} reports a map from an earlier chat, ask its continue-or-fresh question. Call ${T.buildMap} if there is no map (rebuild: true if they chose fresh), then hand off with probe_done at once, without a prerequisite quiz.
-6. Leave every design problem and decision to the teacher: name none, in messages or in probe_done (no "we'll start with why it's split into X and Y").
+6. Leave every design problem and decision to the teacher: name none, in messages or in probe_done (no "we'll start with why it's split into X and Y"). Name no components or folders either (no "decisions in the X, Y and Z"), except on the which-parts card.
 ${restartNote("hand off with probe_done at once")}`;
 }
 
@@ -99,6 +99,15 @@ To start fresh, call ${T.buildMap} with rebuild: true (a new log begins). Add ke
 
 Every message: pose the problem and ask how (stating the decision and asking why gives it away); keep upcoming problems and their count to yourself; keep it short; one question.`;
 
+// For chats that reach the teacher without the prober's which-parts card (the button, a later mode switch).
+const WHICH_PARTS = `If the learner says they wrote only part of the repo, ask once with a card: "Which parts did you write?", with the repo's top-level folders as options (the only place to name folders); they can also type an answer. Record it with ${T.setAuthorship}.`;
+
+const AUTHORSHIP = `### Whose part (this chat: a group project)
+The learner wrote only some of the repo. Each problem says whose part it is; problems in their part come first, and an earlier problem their part builds on runs just before it.
+- Theirs or shared: you may say it's in the part they wrote (shared: it spans their part and their partner's). Pose the problem in plain words, then ask how their code handles it, why they built it that way and what they tried first. Then push on the options they didn't pick, adding the constraints, until their reasons hold up.
+- Partner's: rederive it cold, as above. Once they reach the design, give them one line for an interview: "My partner built <what it does>; it works this way because <the constraint that forces it>."
+- In onboarding, offer the "why" the same way: "why did you build it this way?" for theirs, "want to work out why your partner built it this way?" for a partner's.`;
+
 const ONBOARDING = `### Onboarding mode (this chat)
 If the map is neither built nor building, call ${T.buildMap}; it runs in the background while you teach.
 1. Teach a working map of the code as you normally teach, reading it with your file tools: main components, how data or requests flow, where things live, how to run and test it, conventions.
@@ -110,11 +119,15 @@ ${REDERIVE_INTRO}
 
 ${REDERIVE_PROBLEMS}`;
 
-/** The teaching rules for a chat in `mode`; empty when the plugin should stay out. */
-export function modeRules(mode: Mode | null): string {
+/**
+ * The teaching rules for a chat in `mode`; empty when the plugin should stay out.
+ * `partial`: the learner wrote only some parts (rederive_set_authorship was called).
+ */
+export function modeRules(mode: Mode | null, { partial = false }: { partial?: boolean } = {}): string {
+  const whose = `\n\n${partial ? AUTHORSHIP : WHICH_PARTS}`;
   if (mode === "rederive") {
-    return `### Rederive mode (this chat)\n${REDERIVE_INTRO}\n\n${REDERIVE_START}\n\n${REDERIVE_PROBLEMS}\n\n${SAFETY}`;
+    return `### Rederive mode (this chat)\n${REDERIVE_INTRO}\n\n${REDERIVE_START}\n\n${REDERIVE_PROBLEMS}${whose}\n\n${SAFETY}`;
   }
-  if (mode === "onboarding") return `${ONBOARDING}\n\n${SAFETY}`;
+  if (mode === "onboarding") return `${ONBOARDING}${whose}\n\n${SAFETY}`;
   return "";
 }

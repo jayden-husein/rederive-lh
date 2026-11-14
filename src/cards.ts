@@ -8,6 +8,7 @@ import { TOOL_NAMES } from "./names.ts";
 export const RENDERED_TOOLS = [
   TOOL_NAMES.setMode,
   TOOL_NAMES.status,
+  TOOL_NAMES.setAuthorship,
   TOOL_NAMES.buildMap,
   TOOL_NAMES.nextProblem,
   TOOL_NAMES.logProblem,
@@ -37,6 +38,8 @@ export function cardText(tool: CardInput): string {
     }
     case TOOL_NAMES.status:
       return failed ? "Couldn't check rederive progress" : "Checked rederive progress";
+    case TOOL_NAMES.setAuthorship:
+      return failed ? "Couldn't record which parts you wrote" : "Recorded which parts you wrote";
     case TOOL_NAMES.buildMap: {
       if (!tool.background) return failed ? "Couldn't start the decision map" : "Building the decision map in the background…";
       if (failed) return "Decision map failed";
