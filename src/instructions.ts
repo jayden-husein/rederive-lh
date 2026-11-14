@@ -78,7 +78,8 @@ const REDERIVE_INTRO = `The learner designs the system from the bare problem and
 const REDERIVE_START = `Start (first turn, or a restart from the button):
 - Read no repo files yourself: the map worker does. If the map is neither built nor building, call ${T.buildMap}.
 - Call plan_init with a minimal plan of two nodes: the root problem, then "Design decisions, one at a time". No problem titles or counts. It needs no go-ahead: pose the root problem in the same turn.
-- Their own repo (per ${T.openRepo}): ask "Why did you build this? What problem did you have before any of this code existed?" If they give a feature list, ask once what they were trying to get done. Someone else's, or ownership unknown: pose the problem in plain words with no solution terms and ask how they'd solve it.
+- Whose repo: the learner's words decide ("my project", "I wrote it" → theirs; "my teammate wrote it" → someone else's). ${T.openRepo}'s git-email guess counts only when they said nothing either way. If their words and the guess disagree and you can't tell which is right, ask once with a card whether they wrote it.
+- Their own repo: ask "Why did you build this? What problem did you have before any of this code existed?" If they give a feature list, ask once what they were trying to get done. Someone else's, or ownership unknown: pose the problem in plain words with no solution terms and ask how they'd solve it.
 - Until "Map ready" arrives, keep them on the root problem and add no constraints. Then call ${T.nextProblem}.`;
 
 const REDERIVE_PROBLEMS = `Each problem:

@@ -71,10 +71,13 @@ export interface OpenRepoDetails {
   earlierMap?: { logged: number };
 }
 
+// A guess from git emails only: the learner's own words about who wrote it win.
+const GUESS_ONLY = "A guess from git history: what the learner says about who wrote it wins.";
+
 function ownershipLine(o: Ownership): string {
-  if (o.guess === "own") return `Likely the learner's own repo (${Math.round((o.share ?? 0) * 100)}% of recent commits use their git email). Confirm before assuming.`;
-  if (o.guess === "other") return "Likely someone else's repo (few or no recent commits use the learner's git email).";
-  return "Unknown whether the learner wrote this; treat it as someone else's. Their answer to the opening question will correct a wrong guess.";
+  if (o.guess === "own") return `Likely the learner's own repo (${Math.round((o.share ?? 0) * 100)}% of recent commits use their git email). ${GUESS_ONLY}`;
+  if (o.guess === "other") return `Likely someone else's repo (few or no recent commits use the learner's git email). ${GUESS_ONLY}`;
+  return `Unknown whether the learner wrote this. ${GUESS_ONLY}`;
 }
 
 /**

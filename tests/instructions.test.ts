@@ -90,6 +90,7 @@ test("rederive rules keep rederive's core rules", () => {
   for (const rule of [
     /Why did you build this\?/,
     /Someone else's, or ownership unknown/,
+    /the learner's words decide.*git-email guess counts only when they said nothing.*disagree and you can't tell.*ask once with a card/,
     /add no constraints/,
     /constraints one at a time/,
     /A better idea is a win/,

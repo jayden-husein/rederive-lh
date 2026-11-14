@@ -427,13 +427,16 @@ storing `{ defaultMode: "ask" | "auto" | "always" | "never", defaultRepo }`.
    Next: the user runs the 15 prompts; then tune the examples in `MODES` /
    `routing()` in `src\instructions.ts` from the failures and re-run those.
 
-   **Run 1 (2026-11-14): 14/14 pass, R5 not run yet.** No routing question
+   **Run 1 (2026-11-14): 15/15 pass** (R5 run separately, also passed). No routing question
    was asked on any row. No mode carried over from earlier chats: every
    chat's `rederive_status` said "Mode: not set", and the same repos got
    rederive in R rows and onboarding in O rows. Not routing, but seen: the
    own-repo guess said cs50final is "likely someone else's" (few commits
    with the learner's git email) although R2 says "my CS50 final project"
-   and O4 "I wrote it"; the learner's words should win over the guess.
+   and O4 "I wrote it". Fixed with the user: the learner's words decide
+   ownership; the git guess counts only when they said nothing, and the
+   teacher asks once (card) only when the two disagree and it can't tell.
+   Not yet checked in the app: R2 should now open with "Why did you build this?".
 8. **README.** What it does, install, modes, screenshots placeholder, credits.
 
 ### Skills to use per step
@@ -489,7 +492,8 @@ report are built; next: the user runs them, then tune from failures.
 - Concept gaps inside rederive: name the gap, teach it in 1–2 short messages, check
   with one question, repeat the same constraint. Mode stays rederive.
 - Own repo → "Why did you build this?"; someone else's or unknown → pose the root
-  problem. No separate ownership question.
+  problem. The learner's words decide ownership over the git-email guess; a
+  card asks only when the two disagree and the agent can't tell (changed in step 7).
 - Cards show fixed text only ("Problem loaded", "Progress logged", …), never ids,
   counts or map content. `rederive_open_repo` keeps the host card.
 - `rederive_status` lists problem titles with [done]/[skipped] marks for the agent
