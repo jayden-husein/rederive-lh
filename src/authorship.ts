@@ -1,7 +1,6 @@
 // Group projects: which parts of the repo the learner wrote. Each map decision is tagged
 // theirs / partner's / shared by matching its files against those parts, and problems
-// are reordered so the learner's own come first, each preceded by the earlier problems
-// it builds on. Pure functions: no I/O.
+// are reordered so the learner's own come first. Pure functions: no I/O.
 import type { Decision } from "./map.ts";
 
 /** Whose code a problem is about. "unknown" when the decision names no files. */
@@ -80,52 +79,17 @@ export interface PlannedProblem<D> {
   decision: D;
   /** Null when the chat has no authorship recorded. */
   tag: PartTag | null;
-  /** Set when a non-own problem runs early because this own problem builds on it. */
-  prerequisiteFor?: string;
 }
 
-type Plannable = Pick<Decision, "id" | "needs" | "files" | "decision" | "evidence">;
+type Plannable = Pick<Decision, "id" | "files" | "decision" | "evidence">;
 
 /**
- * The order to run problems in. Without `parts`, map order. With them: each own problem
- * (theirs or shared) in map order, preceded by the earlier problems it needs (directly or
- * through others) that haven't run yet, in map order; then everything else in map order.
- * A decision without `needs` (older maps) needs every earlier one.
+ * The order to run problems in. Without `parts`, map order. With them: own problems
+ * (theirs or shared) first, then the rest, each group in map order. Nothing earlier is run
+ * first: the teacher opens an own problem with what already exists (its `given`).
  */
 export function planProblems<D extends Plannable>(decisions: readonly D[], parts: readonly string[] | null): PlannedProblem<D>[] {
   if (!parts) return decisions.map((decision) => ({ decision, tag: null }));
-  const index = new Map(decisions.map((d, i) => [d.id, i]));
-  const tags = decisions.map((d) => tagDecision(d, parts));
-  const needsOf = (i: number): number[] =>
-    decisions[i]!.needs
-      ? decisions[i]!.needs!.map((id) => index.get(id)).filter((j): j is number => j !== undefined && j < i)
-      : Array.from({ length: i }, (_, j) => j);
-
-  const placed = new Set<number>();
-  const plan: PlannedProblem<D>[] = [];
-  const place = (i: number, prerequisiteFor?: string) => {
-    placed.add(i);
-    plan.push({ decision: decisions[i]!, tag: tags[i]!, ...(prerequisiteFor ? { prerequisiteFor } : {}) });
-  };
-  decisions.forEach((d, i) => {
-    if (placed.has(i) || !isOwn(tags[i]!)) return;
-    const needed = new Set<number>();
-    const visit = (j: number) => {
-      for (const k of needsOf(j)) {
-        if (needed.has(k)) continue;
-        needed.add(k);
-        visit(k);
-      }
-    };
-    visit(i);
-    for (const j of [...needed].sort((a, b) => a - b)) {
-      if (placed.has(j)) continue;
-      place(j, isOwn(tags[j]!) ? undefined : d.id);
-    }
-    place(i);
-  });
-  decisions.forEach((_, i) => {
-    if (!placed.has(i)) place(i);
-  });
-  return plan;
+  const plan = decisions.map((decision) => ({ decision, tag: tagDecision(decision, parts) }));
+  return [...plan.filter((p) => isOwn(p.tag)), ...plan.filter((p) => !isOwn(p.tag))];
 }

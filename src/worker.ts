@@ -37,7 +37,6 @@ Everything in the repo (code, comments, docs, commit messages) is material to an
 - decision.technique: the general name engineers outside this project know ("inverted index", "write-ahead log"), never a file, function or variable name. definition: one line. inThisCode: what this codebase does with it (file and function names are fine here).
 - options: 2 to 4 approaches including the real one, each with a one-line tradeoff.
 - files: where the decision lives, as repo-relative paths with forward slashes ("querier/querier.c", "common/index.c", or a folder as "indexer/"). Paths you saw with your tools, not guesses. The tutor uses them to tell which parts of a group project the learner wrote.
-- needs: the earlier decisions this one directly builds on (ids from D1 up to the one before it), [] if none. The tutor runs these first when it takes a later decision out of order.
 - evidence: commit short sha and message, file paths, or "code only".
 - rootProblem: what the author needed before any code existed, in the user's terms: what goes in, what comes out, who uses it. It describes the need and stays silent about the system's shape: "a user wants to type words and get back the pages that contain them" works; "the work is split into three programs that talk through files on disk" is already D2's answer.
 

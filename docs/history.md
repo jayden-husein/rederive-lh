@@ -194,6 +194,103 @@ Git history has the code.
 
    **Step 7 is done (2026-11-14):** 15/15, no instruction tuning needed.
 
+8. **Authorship: which parts the learner wrote.** Decided with the user
+   (2026-11-14) after the R2 re-run, where the learner answered the
+   ownership card with "Partner/group project: I wrote some of it". Applies
+   in **rederive and onboarding** modes.
+   - **Ask once.** When the learner says they wrote only part of it (the
+     ownership card or their own words), the prober follows up with one
+     card: "Which parts did you write?" Options: the repo's top-level
+     folders (e.g. crawler, indexer, querier, common); the learner can also
+     type an answer. Naming folders is fine here: it's their own project.
+     Persist the answer per chat in `sessions.json` (survives compaction;
+     shown by `rederive_status`). Add a tool or a parameter to record it
+     (e.g. `rederive_set_authorship({ parts })`).
+   - **Tag each problem.** Every map decision has `decision.inThisCode`
+     naming its files (cs50final: D1 `crawler/`, D2 `common/pagedir.c`, D3–D4
+     `common/index.c` + `indexer/`, D5–D7 `querier/`). Match those paths
+     against the learner's parts: "theirs", "partner's" or "shared". The tag
+     goes in `rederive_next_problem`'s result and the status problem list,
+     for the agent.
+   - **Order: own parts first**, but keep map order for whatever an own
+     problem depends on: before an own problem, run the earlier
+     (lower-numbered) problems it needs; other partner problems come after
+     the own ones. Work out how "needs" is known (simplest: every
+     lower-numbered problem counts as needed; better: the worker records
+     dependencies in the map). Decide with the user if it isn't clear.
+   - **The tutor may say** "this one is in the part you wrote".
+   - **Teach by tag.** Theirs: own-repo style, "Why did you build it this
+     way? What did you try first?", then push on the alternatives they
+     didn't pick. Partner's: today's cold rederive, ending with a one-line
+     way to say it in an interview ("My partner built X; it works this way
+     because..."). In onboarding mode the tag shapes the "why" offers the
+     same way.
+   - **Log** marks each problem as theirs / partner's / shared.
+   - **Also fix (from the R2 re-run):** the prober's closing line named the
+     components ("decisions in the crawler, indexer and querier"), which
+     hints at the split; and it announced the mode twice. Exception: the
+     "which parts" card may name folders (above).
+   **User re-runs R2** answering "I wrote some of it", picks parts, and runs
+   one own problem and one partner problem. Check each run with
+   `npm run transcript` and `npm run leak-check`. Re-run the routing eval
+   afterwards (prober text changes).
+
+   **Built 2026-11-14 (commit 04da1d3), changed after the first R2 re-run.**
+   Decided with the user: the worker records `files` (repo-relative paths) per
+   decision; new tool `rederive_set_authorship({ parts })`; shared problems are
+   taught and ordered like theirs. Maps built before step 8 lack `files`: paths
+   come from `inThisCode`/`evidence` (only paths with a folder plus an extension
+   or a trailing `/`; none → "unknown", run like a partner's).
+   R2 re-run 1 (chat_mwg7xc3c): the ownership card, the which-parts card and
+   `rederive_set_authorship(["querier/"])` all worked; the mode was announced
+   once; leak-check 0 leaks. But the worker's `needs` chained D6 → D5 → … → D1,
+   so "own first, with prerequisites" gave plain map order and D1 (partner's)
+   came first. **Changed with the user: no prerequisite runs.** Order is own
+   problems (theirs, shared) in map order, then the rest; `needs` is removed.
+   An own problem opens with what already exists (its Given), described by what
+   each piece does, never by technique name. On the current cs50final map
+   (built in that run, has `files`): D6, D7, D8, then D1–D5; no rebuild needed.
+   The chat stopped on D1's question, so no own problem has run yet.
+   R2 re-run 2 (chat_mwg8j2h7, continued the map): own problems came first
+   (D6, then D7 after a skip), tags and the Given-by-function opening worked,
+   leak-check 0 leaks. Fixed in the teacher's rules: own problems were opened
+   cold ("how would you…") instead of "how does your code handle it, why, what
+   did you try first" (now in the tag line itself); the teacher's plan message
+   named "the crawler and indexer" (now: no component/folder names, no problem
+   ids, "the part you wrote" / "your partner's part"); "go to partner question"
+   got no partner problem (now: load one by id from the status list); it asked
+   for a plan go-ahead (rule made explicit). The learner answered "idk"
+   throughout, so no `whose part:` log line or partner interview line is
+   checked yet.
+   Code: `src\authorship.ts` (tagging, `planProblems`), parts in
+   `sessions.json`, tag lines in `formatProblemForAgent`, `whose part:` in log
+   entries (finished ones only; skips and "unknown" get none), teach-by-tag rules
+   (`AUTHORSHIP`) or the teacher's own which-parts rule (`WHICH_PARTS`) in
+   `modeRules`. `["."]` clears the parts (wrote all of it). Parts are dropped when
+   the chat opens a different repo.
+   R2 re-run 3 (chat_mwg8xys2): no plan go-ahead; D7 (theirs) opened in
+   own-part style ("how does the code get from…, what you tried first"); no
+   component names from the teacher. Still wrong: "give partner question" made
+   the teacher skip D7 and open D8 (shared, from the skip result) instead of a
+   partner problem by id. Still unchecked: a finished own problem (`whose part:`
+   log line) and a partner problem's interview line. The user asked why
+   rederive shows no right/wrong like normal mode: every question is an
+   ungraded `ask_user_question` card (step 6b); the native quiz grades but shows
+   the correct option on a wrong pick. Chosen: a custom graded card, step 9.
+
+   R2 re-run 4 (chat_mwg8xys2, continued): the log got `whose part: shared`
+   (D8) and `whose part: partner's` (D4); both ended with an interview
+   one-liner; D8 (shared) was taught in own-part style. Leak-check's 8 "leaks"
+   were technique names said right after the learner reached the design (before
+   the log call) plus two common words. Fixed after it: "go to d4" skipped D1
+   before jumping (`next_problem`'s id now says not to skip first); the
+   teacher read unmarked problems in the status list as done (they're now
+   marked [to do]); the partner interview line didn't use "My partner built…"
+   (that form is now in the partner tag line).
+
+   **Step 8 is done (2026-11-14).** The routing eval was not re-run after the
+   prober text changed; run `npm run routing-report` before relying on it.
+
 ## Skills used per step
 
 | Step | Skills | What for |
@@ -206,3 +303,5 @@ Git history has the code.
 | | `mattpocock-skills:diagnosing-bugs` | Each issue: reproduce from the transcript or a test before fixing. |
 | | `mattpocock-skills:writing-for-agents` | Shortening and relocating the instruction text (6a, 6b). |
 | 7. Routing eval | `mattpocock-skills:writing-for-agents` | Tuning instruction examples from routing failures. |
+| 8. Authorship | `mattpocock-skills:grilling` | Settled how "needs" is known, the tool shape and shared problems with the user; later dropped prerequisite runs after R2. |
+| | `mattpocock-skills:code-review` | Standards and spec review before the first in-app test. |

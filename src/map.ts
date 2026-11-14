@@ -48,10 +48,6 @@ export const DecisionSchema = Type.Object(
       maxItems: 12,
       description: "Where this decision lives in the code.",
     }),
-    needs: Type.Array(Type.String({ pattern: "^D([1-9]|10)$" }), {
-      maxItems: 9,
-      description: "Earlier decisions this one directly builds on; [] for none.",
-    }),
     evidence: Text('Commits (short sha and message) and file paths, or "code only".'),
   },
   { additionalProperties: false },
@@ -66,8 +62,8 @@ export const DecisionMapResultSchema = Type.Object(
 );
 
 type WorkerDecision = Static<typeof DecisionSchema>;
-/** A map decision. Maps built before step 8 have no `files` or `needs`. */
-export type Decision = Omit<WorkerDecision, "files" | "needs"> & Partial<Pick<WorkerDecision, "files" | "needs">>;
+/** A map decision. Maps built before step 8 have no `files`. */
+export type Decision = Omit<WorkerDecision, "files"> & Partial<Pick<WorkerDecision, "files">>;
 export type DecisionMapResult = Omit<Static<typeof DecisionMapResultSchema>, "decisions"> & { decisions: Decision[] };
 
 /** What we store in map.json: the worker's result plus where it came from. */
@@ -100,11 +96,7 @@ export function validateMapResult(result: unknown): asserts result is DecisionMa
     if (key && earlier) problems.push(`${d.id} and ${earlier} have the same technique "${d.decision.technique}"; each decision must be a different mechanism.`);
     else if (key) techniques.set(key, d.id);
   }
-  decisions.forEach((d, i) => {
-    for (const need of Array.isArray(d?.needs) ? d.needs : []) {
-      const at = Number(String(need).slice(1)) - 1;
-      if (!(at >= 0 && at < i)) problems.push(`${d.id}.needs has "${need}"; needs may only name earlier decisions (D1 to D${i}).`);
-    }
+  decisions.forEach((d) => {
     for (const file of Array.isArray(d?.files) ? d.files : []) {
       if (!isRepoRelative(String(file))) problems.push(`${d.id}.files has "${file}"; use paths relative to the repo root, without "..".`);
     }
@@ -131,7 +123,6 @@ export function renderMapMarkdown(map: StoredMap): string {
       "- Options:",
       ...d.options.map((o) => `  - ${o.approach}: ${o.tradeoff}`),
       ...(d.files ? [`- Files: ${d.files.join(", ")}`] : []),
-      ...(d.needs ? [`- Needs: ${d.needs.join(", ") || "none"}`] : []),
       `- Evidence: ${d.evidence}`,
     );
   }

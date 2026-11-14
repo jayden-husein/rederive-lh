@@ -296,7 +296,7 @@ test("status's description carries the chat's saved mode and repo, read synchron
 
 // --- group projects: which parts the learner wrote ------------------------
 
-test("a group project: own problems first with their prerequisites, tagged, and the log says whose part", async () => {
+test("a group project: own problems first, tagged, and the log says whose part", async () => {
   const group = makeGitRepo(join(workspace, "group"), [
     { files: { "crawler/c.c": "\n", "common/p.c": "\n", "querier/q.c": "\n", ".github/ci.yml": "\n" }, message: "initial" },
   ]);
@@ -313,14 +313,8 @@ test("a group project: own problems first with their prerequisites, tagged, and 
   await tools("chat-g").setAuthorship.execute("5", { parts: ["querier/"] });
 
   const result = sampleMapResult(5);
-  const layout: [string[], string[]][] = [
-    [["crawler/c.c"], []],
-    [["common/p.c"], ["D1"]],
-    [["querier/q.c"], []],
-    [["querier/q.c"], ["D2", "D3"]],
-    [["querier/q.c", "common/p.c"], ["D4"]],
-  ];
-  layout.forEach(([files, needs], i) => Object.assign(result.decisions[i]!, { files, needs }));
+  const layout = [["crawler/c.c"], ["common/p.c"], ["querier/q.c"], ["querier/q.c"], ["querier/q.c", "common/p.c"]];
+  layout.forEach((files, i) => Object.assign(result.decisions[i]!, { files }));
   const repoId = (await deps.store.getChat("chat-g")).repo!.id;
   tasks.push(succeededTask("tg", repoId, "2026-11-14T11:00:00.000Z", result));
 
@@ -331,30 +325,29 @@ test("a group project: own problems first with their prerequisites, tagged, and 
   assert.deepEqual(s.details.parts, ["querier"]);
   assert.equal(s.details.nextProblemId, "D3");
   assert.match(textOf(s), /Group project: the learner wrote querier\. Their problems come first\./);
-  assert.match(textOf(s), / {2}D1\. Problem 1 \(partner's\)\n {2}D2\. Problem 2 \(partner's\)\n {2}D3\. Problem 3 \(theirs\)\n {2}D4\. Problem 4 \(theirs\)\n {2}D5\. Problem 5 \(shared\)/);
+  assert.match(textOf(s), / {2}D1\. Problem 1 \(partner's\) \[to do\]\n {2}D2\. Problem 2 \(partner's\) \[to do\]\n {2}D3\. Problem 3 \(theirs\) \[to do\]\n {2}D4\. Problem 4 \(theirs\) \[to do\]\n {2}D5\. Problem 5 \(shared\) \[to do\]/);
 
   const first = await t.nextProblem.execute("7", {});
   assert.equal(first.details.id, "D3");
-  assert.match(textOf(first), /Whose part: theirs\. You may tell them it's in the part they wrote\./);
+  assert.match(textOf(first), /Whose part: theirs\. You may tell them it's in the part they wrote\. It may run before the problems it builds on: open with what already exists \(Given\).*Then ask how their code handles the problem, why they built it that way and what they tried first/);
 
-  // D4 needs D2, which needs D1: both run next, marked as prerequisites of D4.
+  // Own problems D3, D4, then shared D5, then the partner's D1, D2: nothing is pulled forward.
   const logged = await t.logProblem.execute("8", { id: "D3", struggled: "s", foundAlone: "f", didWell: "w", didOk: "o" });
-  assert.equal(logged.details.nextProblemId, "D1");
-  assert.match(textOf(logged), /Whose part: partner's\.\nRuns now because D4, in their part, builds on it/);
+  assert.equal(logged.details.nextProblemId, "D4");
   assert.match(readFileSync(deps.maps.logFile(repoId), "utf8"), /^## D3\. Problem 3\n(.+\n){4}whose part: theirs\n$/);
-
-  await t.skipProblem.execute("9", { id: "D1" });
-  assert.equal((await t.nextProblem.execute("10", {})).details.id, "D2");
-  const shared = await t.nextProblem.execute("11", { id: "D5" });
+  await t.skipProblem.execute("9", { id: "D4" });
+  const shared = await t.nextProblem.execute("10", {});
+  assert.equal(shared.details.id, "D5");
   assert.match(textOf(shared), /Whose part: shared\. You may tell them it spans their part and their partner's\./);
+  await t.logProblem.execute("11", { id: "D5", struggled: "s", foundAlone: "f", didWell: "w", didOk: "o" });
+  const partner = await t.nextProblem.execute("12", {});
+  assert.equal(partner.details.id, "D1");
+  assert.match(textOf(partner), /Whose part: partner's\. Once they reach the design, give one line for an interview in this form: "My partner built/);
+  assert.doesNotMatch(textOf(partner), /open with what already exists/);
 });
 
-test("a prerequisite loses its reason once its own problem is done, and [\".\"] clears the parts", async () => {
+test("[\".\"] clears the parts, and absolute or UNC parts are refused", async () => {
   const t = tools("chat-g");
-  // D3 done, D1 skipped above; D4 (theirs) is finished out of order, so D2 no longer runs "for" it.
-  const logged = await t.logProblem.execute("1", { id: "D4", struggled: "s", foundAlone: "f", didWell: "w", didOk: "o" });
-  assert.equal(logged.details.nextProblemId, "D2");
-  assert.doesNotMatch(textOf(logged), /Runs now because/);
   await assert.rejects(t.setAuthorship.execute("2", { parts: [String.raw`\\server\share\x`] }), /relative to the repo root/);
   const cleared = await t.setAuthorship.execute("3", { parts: ["."] });
   assert.deepEqual(cleared.details, { parts: [], missing: [] });
@@ -365,7 +358,7 @@ test("a prerequisite loses its reason once its own problem is done, and [\".\"] 
 test("without recorded parts, problems carry no whose-part line and the log has none", async () => {
   const t = tools("chat-a");
   const next = await t.nextProblem.execute("1", {});
-  assert.doesNotMatch(textOf(next), /Whose part|Runs now because/);
+  assert.doesNotMatch(textOf(next), /Whose part/);
   assert.doesNotMatch(readFileSync(deps.maps.logFile((await deps.store.getChat("chat-a")).repo!.id), "utf8"), /whose part/);
 });
 

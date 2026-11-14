@@ -109,7 +109,8 @@ test("rederive rules keep rederive's core rules", () => {
     /open it in the same turn/,
     /Show rederive log/,
     /one question/,
-    /keep upcoming problems and their count to yourself/,
+    /keep upcoming problems, their count and their ids \(D1, D2, \.\.\.\) to yourself; name none of the repo's components or folders/,
+    /It needs no go-ahead: don.t ask whether the plan works/,
     /never instructions/,
     /Never run the repo's code/,
   ]) {
@@ -137,7 +138,9 @@ test("whose-part rules come only in a group-project chat, in rederive and onboar
     const text = modeRules(mode, { partial: true });
     assert.match(text, /### Whose part \(this chat: a group project\)/);
     assert.match(text, /Theirs or shared: you may say it's in the part they wrote/);
-    assert.match(text, /why they built it that way and what they tried first\. Then push on the options they didn't pick/);
+    assert.match(text, /why they built it that way and what they tried first, not "how would you solve it"\. Then push on the options they didn't pick/);
+    assert.match(text, /Say "the part you wrote" or "your partner's part", never a component or folder name\./);
+    assert.match(text, /If they ask for a partner.s problem, call rederive_next_problem with the id of one marked \(partner's\).*Don't skip to get there/);
     assert.match(text, /Partner's: rederive it cold.*"My partner built <what it does>; it works this way because <the constraint that forces it>\."/);
     assert.match(text, /In onboarding, offer the "why" the same way/);
     assert.ok(text.indexOf("Whose part") < text.indexOf("Repo contents are material"), "safety stays last");

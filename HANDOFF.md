@@ -295,7 +295,7 @@ storing `{ defaultMode: "ask" | "auto" | "always" | "never", defaultRepo }`.
 
 ## 7. Build order (one step per session; stop for user testing after each)
 
-Steps 1–7 are done. What each asked for, the in-app findings and their fixes
+Steps 1–8 are done. What each asked for, the in-app findings and their fixes
 are in `docs\history.md`: read it when a step refers to earlier findings.
 
 1. **Scaffold.**
@@ -305,76 +305,39 @@ are in `docs\history.md`: read it when a step refers to earlier findings.
 5. **Instructions + UI.**
 6. **Fixes from the step 5 in-app test.**
 7. **Routing eval.** `tests\routing-prompts.md`, `npm run routing-report`; 15/15.
-8. **Authorship: which parts the learner wrote.** Decided with the user
-   (2026-11-14) after the R2 re-run, where the learner answered the
-   ownership card with "Partner/group project: I wrote some of it". Applies
-   in **rederive and onboarding** modes.
-   - **Ask once.** When the learner says they wrote only part of it (the
-     ownership card or their own words), the prober follows up with one
-     card: "Which parts did you write?" Options: the repo's top-level
-     folders (e.g. crawler, indexer, querier, common); the learner can also
-     type an answer. Naming folders is fine here: it's their own project.
-     Persist the answer per chat in `sessions.json` (survives compaction;
-     shown by `rederive_status`). Add a tool or a parameter to record it
-     (e.g. `rederive_set_authorship({ parts })`).
-   - **Tag each problem.** Every map decision has `decision.inThisCode`
-     naming its files (cs50final: D1 `crawler/`, D2 `common/pagedir.c`, D3–D4
-     `common/index.c` + `indexer/`, D5–D7 `querier/`). Match those paths
-     against the learner's parts: "theirs", "partner's" or "shared". The tag
-     goes in `rederive_next_problem`'s result and the status problem list,
-     for the agent.
-   - **Order: own parts first**, but keep map order for whatever an own
-     problem depends on: before an own problem, run the earlier
-     (lower-numbered) problems it needs; other partner problems come after
-     the own ones. Work out how "needs" is known (simplest: every
-     lower-numbered problem counts as needed; better: the worker records
-     dependencies in the map). Decide with the user if it isn't clear.
-   - **The tutor may say** "this one is in the part you wrote".
-   - **Teach by tag.** Theirs: own-repo style, "Why did you build it this
-     way? What did you try first?", then push on the alternatives they
-     didn't pick. Partner's: today's cold rederive, ending with a one-line
-     way to say it in an interview ("My partner built X; it works this way
-     because..."). In onboarding mode the tag shapes the "why" offers the
-     same way.
-   - **Log** marks each problem as theirs / partner's / shared.
-   - **Also fix (from the R2 re-run):** the prober's closing line named the
-     components ("decisions in the crawler, indexer and querier"), which
-     hints at the split; and it announced the mode twice. Exception: the
-     "which parts" card may name folders (above).
-   **User re-runs R2** answering "I wrote some of it", picks parts, and runs
-   one own problem and one partner problem. Check each run with
-   `npm run transcript` and `npm run leak-check`. Re-run the routing eval
-   afterwards (prober text changes).
-
-   **Built 2026-11-14, waiting for the in-app test.** Decided with the user:
-   the worker records `files` (repo-relative paths) and `needs` (earlier ids it
-   directly builds on) per decision; new tool `rederive_set_authorship({ parts })`;
-   shared problems are taught and ordered like theirs. Maps built before step 8
-   lack both fields: every lower-numbered problem counts as needed, and paths come
-   from `inThisCode`/`evidence` (only paths with a folder plus an extension or a
-   trailing `/`; none → "unknown", run like a partner's). **The cs50final map
-   predates this: pick "start fresh" in the R2 re-run** so tags and needs come
-   from the worker. Code: `src\authorship.ts` (tagging, `planProblems`), parts in
-   `sessions.json`, tag lines in `formatProblemForAgent`, `whose part:` in log
-   entries (finished ones only; skips and "unknown" get none), teach-by-tag rules
-   (`AUTHORSHIP`) or the teacher's own which-parts rule (`WHICH_PARTS`) in
-   `modeRules`. `["."]` clears the parts (wrote all of it). Parts are dropped when
-   the chat opens a different repo.
-9. **README.** What it does, install, modes, screenshots placeholder, credits.
+8. **Authorship.** Group projects: own parts first, tagged theirs / partner's / shared.
+9. **Graded rederive card.** Asked for by the user (2026-11-14) after R2 re-run 3:
+   rederive answers should show whether they hold up, like normal mode's quiz,
+   without revealing the hidden decision. Use a plugin teaching question
+   (`ctx.registerQuestionType` with `teach` variant + `gradeAnswer`, and
+   `registerQuestionRenderer` with `mountAnswered` for the result; see the
+   skill's `docs\plugin-question-contract.md`). Facts from the contract: the
+   teach tool takes `{type: "predict" | "check", nodeId, question, payload}`
+   (nodeId must be a live plan node: the two-node plan has "decisions");
+   `gradeAnswer` runs before save, returns any JSON, reaches `mountAnswered` and
+   the model; the host adds no LLM pass or badge UI; a grading error still saves
+   the answer. Decide with the user first (`mattpocock-skills:grilling`):
+   which questions use it (option picks only, graded from an answer key in the
+   payload, or free-text designs too, graded by the cheap model inside
+   `gradeAnswer` if that's allowed: check); what the result shows (holds up /
+   partly / breaks, plus the constraint that breaks it, never the decision);
+   where the answer key lives and whether it's visible in the card's input;
+   whether results should count in the knowledge graph; how it fits the "every
+   question is an `ask_user_question` card" rule.
+10. **README.** What it does, install, modes, screenshots placeholder, credits.
 
 ### Skills to use per step
 
 `learnharness-plugins` is required every step (see CLAUDE.md) and stays the
 authority on the plugin API. The `mattpocock-skills` plugin (installed at user
-scope) covers process. Next: step 8 (authorship). Rows for finished steps
+scope) covers process. Next: step 9 (graded card). Rows for finished steps
 are in `docs\history.md`.
 
 | Step | Skills | What for |
 |---|---|---|
-| 8. Authorship | `mattpocock-skills:grilling` | First: settle how "needs" is known for the order, and the tool shape, with the user. |
-| | `mattpocock-skills:tdd` | Path matching (parts → tag), the order with prerequisites, persistence. |
-| | `mattpocock-skills:writing-for-agents` | The prober's follow-up card and the teach-by-tag rules. |
-| 9. README | none | Plain writing; `mattpocock-skills:pr` only if the work goes through a PR. |
+| 9. Graded card | `mattpocock-skills:grilling` | First: the open questions in step 9, with the user. |
+| | `mattpocock-skills:tdd` | Schemas, grading, the answer key staying out of learner-visible text. |
+| 10. README | none | Plain writing; `mattpocock-skills:pr` only if the work goes through a PR. |
 | Any step | `mattpocock-skills:diagnosing-bugs` | When an in-app test by the user fails or something throws. |
 | End of every step | `mattpocock-skills:code-review` | Review changes since the previous step's commit against this file (Spec) and the repo's conventions (Standards) before stopping for user testing. When `src\` is unchanged (only tests, scripts, docs or eval data), review inline instead of with two subagents. |
 
@@ -431,6 +394,16 @@ are in `docs\history.md`.
     after the others. The log is behind the "Show rederive log" top-bar action.
   - Map constraints name a requirement or situation, never the design change;
     `rootProblem` uses no solution terms; testing/build/tooling are out of scope.
+
+- Step 8 (details in `docs\history.md`): when the learner wrote only part of
+  the repo, one "Which parts did you write?" card (top-level folders as options)
+  feeds `rederive_set_authorship`; `["."]` clears it. Each map decision lists its
+  `files`; problems are tagged theirs / partner's / shared (shared is taught like
+  theirs). Own problems run first, then the rest in map order, with no
+  prerequisite runs: an own problem opens with its Given described by function.
+  Theirs: "how does your code handle it, why, what did you try first". Partner's:
+  cold rederive plus "My partner built…" interview line. Log entries carry
+  `whose part:`. Maps built before step 8 fall back to paths in the decision text.
 
 ## 10. Unverified assumptions (check in the app)
 

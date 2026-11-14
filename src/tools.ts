@@ -311,7 +311,7 @@ export function createStatusTool(deps: ToolDeps, context: PluginToolContext): Ag
         problems = [
           "Problems (for you only; keep them from the learner):",
           ...map.decisions.map((d) => {
-            const mark = progress.done.has(d.id) ? " [done]" : progress.skipped.includes(d.id) ? " [skipped]" : "";
+            const mark = progress.done.has(d.id) ? " [done]" : progress.skipped.includes(d.id) ? " [skipped]" : " [to do]";
             const part = state.parts ? ` (${PART_LABELS[tagDecision(d, state.parts)]})` : "";
             return `  ${d.id}. ${d.title}${part}${mark}`;
           }),
@@ -483,7 +483,7 @@ export function buildMapDefinition(deps: ToolDeps): PluginBackgroundTool<typeof 
 const NextProblemParameters = Type.Object(
   {
     id: Type.Optional(
-      Type.String({ pattern: "^D\\d+$", description: 'A specific problem, e.g. "D3". Omit for the next one (the usual case).' }),
+      Type.String({ pattern: "^D\\d+$", description: 'A specific problem, e.g. "D3", when the learner asks for one. Don\'t skip the current problem first: it stays untouched and comes back. Omit for the next one (the usual case).' }),
     ),
   },
   { additionalProperties: false },
@@ -497,12 +497,19 @@ export interface NextProblemDetails {
   revisit?: boolean;
 }
 
-type ProblemToRun = Pick<NextProblem, "decision" | "revisit"> & Partial<Pick<NextProblem, "tag" | "prerequisiteFor">>;
+type ProblemToRun = Pick<NextProblem, "decision" | "revisit"> & Partial<Pick<NextProblem, "tag">>;
+
+// Own problems run before the earlier problems they build on, so Given may name designs
+// the learner hasn't derived yet.
+const OWN_OPENING =
+  "It may run before the problems it builds on: open with what already exists (Given) in a sentence or two, by what each piece does, never by its technique name. " +
+  'Then ask how their code handles the problem, why they built it that way and what they tried first, not "how would you solve it".';
 
 const PART_LINES: Record<PartTag, string> = {
-  theirs: "Whose part: theirs. You may tell them it's in the part they wrote.",
-  shared: "Whose part: shared. You may tell them it spans their part and their partner's.",
-  partner: "Whose part: partner's.",
+  theirs: `Whose part: theirs. You may tell them it's in the part they wrote. ${OWN_OPENING}`,
+  shared: `Whose part: shared. You may tell them it spans their part and their partner's. ${OWN_OPENING}`,
+  partner:
+    'Whose part: partner\'s. Once they reach the design, give one line for an interview in this form: "My partner built <what it does>; it works this way because <the constraint that forces it>."',
   unknown: "Whose part: unknown (the map names no files for it). Run it cold, as for a partner's part.",
 };
 
@@ -517,9 +524,6 @@ export function formatProblemForAgent(map: StoredMap, problem: ProblemToRun): st
     `Problem ${d.id}, for you only.`,
     problem.revisit ? "Skipped earlier: say you're coming back to it, then open it fresh." : "",
     problem.tag ? PART_LINES[problem.tag] : "",
-    problem.prerequisiteFor
-      ? `Runs now because ${problem.prerequisiteFor}, in their part, builds on it: say in a few words that their part builds on this one.`
-      : "",
     first ? `Root problem: ${map.rootProblem}` : "",
     `Problem: ${d.problem}`,
     `Given: ${d.given}`,

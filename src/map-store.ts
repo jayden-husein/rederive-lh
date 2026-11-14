@@ -69,8 +69,6 @@ export interface NextProblem {
   revisit: boolean;
   /** Whose code it is about; null when the chat recorded no authorship. */
   tag: PartTag | null;
-  /** Set when it runs early because this own problem builds on it. */
-  prerequisiteFor: string | null;
 }
 
 /** Which parts of the repo the learner wrote (repo-relative), or null when not recorded. */
@@ -86,8 +84,6 @@ function pickNext(map: StoredMap, progress: LogProgress, parts: Parts): NextProb
     decision: picked.decision,
     revisit: progress.skipped.includes(picked.id),
     tag: picked.tag,
-    // The own problem it was pulled forward for may already be done (run by id).
-    prerequisiteFor: picked.prerequisiteFor && !progress.done.has(picked.prerequisiteFor) ? picked.prerequisiteFor : null,
   };
 }
 

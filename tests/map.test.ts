@@ -41,14 +41,10 @@ test("map.md follows rederive's layout", () => {
   assert.match(md, /- Evidence: code only\n$/);
 });
 
-test("needs may only name earlier decisions, and files must be repo-relative", () => {
+test("files must be repo-relative", () => {
   const result = sampleMapResult(5);
-  result.decisions[1]!.needs = ["D2"];
-  result.decisions[2]!.needs = ["D4"];
   result.decisions[3]!.files = ["../outside.c", "C:/abs.c", "ok/file.c"];
   assert.throws(() => validateMapResult(result), (error: Error) => {
-    assert.match(error.message, /D2\.needs has "D2"; needs may only name earlier decisions \(D1 to D1\)/);
-    assert.match(error.message, /D3\.needs has "D4"/);
     assert.match(error.message, /D4\.files has "\.\.\/outside\.c"/);
     assert.match(error.message, /D4\.files has "C:\/abs\.c"/);
     assert.doesNotMatch(error.message, /ok\/file\.c/);
@@ -56,14 +52,13 @@ test("needs may only name earlier decisions, and files must be repo-relative", (
   });
 });
 
-test("the worker must give files and needs, but maps built before them still load", () => {
+test("the worker must give files, but maps built before them still load", () => {
   const missing = sampleMapResult(5) as { decisions: Record<string, unknown>[] };
   delete missing.decisions[0]!.files;
   assert.equal(Value.Check(DecisionMapResultSchema, missing), false);
   const old = sampleMapResult(5) as { decisions: Record<string, unknown>[] };
   for (const d of old.decisions) {
     delete d.files;
-    delete d.needs;
   }
   assert.doesNotThrow(() => validateMapResult(old));
 });
