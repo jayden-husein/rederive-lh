@@ -286,6 +286,23 @@ storing `{ defaultMode: "ask" | "auto" | "always" | "never", defaultRepo }`.
    User runs them in fresh sessions; tune instruction examples from failures.
 7. **README.** What it does, install, modes, screenshots placeholder, credits.
 
+### Skills to use per step
+
+`learnharness-plugins` is required every step (see CLAUDE.md) and stays the
+authority on the plugin API. The `mattpocock-skills` plugin (installed at user
+scope) covers process. Steps 1–3 are done.
+
+| Step | Skills | What for |
+|---|---|---|
+| 4. Map worker | `mattpocock-skills:tdd` | Test-first for the logic with clear inputs and outputs: validating map results against `resultSchema`, `next_problem` picking the next unlogged decision, `log_problem` writing rederive's `log.md` format. |
+| | `mattpocock-skills:prototype` | Before wiring the worker, try the worker prompt on the cs50final summary (`npm run summary`) to check the decisions it picks look right. |
+| 5. Instructions + UI | `mattpocock-skills:grilling` | First, before writing anything: settle routing/teaching behavior and the §9 open questions with the user. |
+| | `mattpocock-skills:writing-for-agents` | Writing the prober/teacher instruction text and the worker instructions. |
+| 6. Routing eval | `mattpocock-skills:writing-for-agents` | Tuning instruction examples from routing failures. |
+| 7. README | none | Plain writing; `mattpocock-skills:pr` only if the work goes through a PR. |
+| Any step | `mattpocock-skills:diagnosing-bugs` | When an in-app test by the user fails or something throws. |
+| End of every step | `mattpocock-skills:code-review` | Review changes since the previous step's commit against this file (Spec) and the repo's conventions (Standards) before stopping for user testing. |
+
 ---
 
 ## 8. Done when
