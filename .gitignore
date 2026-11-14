@@ -1,0 +1,6 @@
+﻿.claude/skills/
+ref/
+data/
+node_modules/
+dist/
+.sdk/
