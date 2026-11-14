@@ -55,6 +55,12 @@ test("the prober asks continue-or-fresh when an earlier chat left a map", () => 
   assert.match(proberInstructions(base), /reports a map from an earlier chat, ask its continue-or-fresh question/);
 });
 
+test("the prober asks about ownership only on a conflict, and names no design problems", () => {
+  const text = proberInstructions(base);
+  assert.match(text, /ownership guess contradicts what the learner said.*pick neither: ask once with a card.*put the answer in probe_done/);
+  assert.match(text, /Leave every design problem and decision to the teacher: name none, in messages or in probe_done/);
+});
+
 test("the always-on teacher text is short and points to rederive_status for the rules", () => {
   const text = teacherInstructions(base);
   assert.ok(text.length < 1400, `teacher instructions are ${text.length} chars`);
@@ -90,7 +96,7 @@ test("rederive rules keep rederive's core rules", () => {
   for (const rule of [
     /Why did you build this\?/,
     /Someone else's, or ownership unknown/,
-    /Whose repo: go by the learner's words .* git-email guess.*If they disagree, don't pick one: ask once with a card/,
+    /Whose repo: if the handoff or the chat already settled it, use that\. Otherwise go by the learner's words .* git-email guess.*If they disagree, don't pick one: ask once with a card/,
     /add no constraints/,
     /constraints one at a time/,
     /A better idea is a win/,

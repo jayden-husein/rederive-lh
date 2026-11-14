@@ -436,8 +436,16 @@ storing `{ defaultMode: "ask" | "auto" | "always" | "never", defaultRepo }`.
    and O4 "I wrote it". Fixed with the user: the teacher uses the learner's
    words or the git guess when only one says anything or both agree; when
    they disagree it picks neither and asks once with a card.
-   Not yet checked in the app: R2 should now get that card before the
-   opening question.
+   R2 re-run (chat_mwg61rwy): no card. The rule was only in the teacher's
+   rules, but the prober opens the repo and decided alone ("don't assume he
+   wrote it"). It also named a design decision while handing off ("start
+   from its first problem: why the search engine is split into a crawler,
+   an indexer and a querier"), which it can't know and which gives D-level
+   answers away. Fixed: the ownership check is now in the prober's repo step
+   (answer goes in probe_done; the teacher uses it), and prober step 6 names
+   no design problems or decisions. Prober instructions grew ~90 tokens.
+   Not yet checked in the app: re-run R2; expect the ownership card after
+   the repo opens and no design problem named before the teacher's turn.
 8. **README.** What it does, install, modes, screenshots placeholder, credits.
 
 ### Skills to use per step
