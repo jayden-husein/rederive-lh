@@ -281,6 +281,21 @@ storing `{ defaultMode: "ask" | "auto" | "always" | "never", defaultRepo }`.
    Search Engine) and reviews the decisions.
 5. **Instructions + UI.** Routing and rederive rules, tool renderers, settings,
    action. **User runs a full session.**
+   Also fix the worker instructions (`WORKER_INSTRUCTIONS` in `src/worker.ts`),
+   from the user's review of the first real map (cs50final):
+   - Constraints must state a requirement or situation that breaks the
+     learner's design ("pages link back to each other", "the querier runs
+     later, in a separate process"), never the design change itself. The first
+     map had "...so remember every address already seen" and "Write it as
+     plain text", which give the answer away.
+   - `rootProblem` must use no solution terms (the first map said the work "is
+     split into three programs ... through files on disk", which gives away D2).
+   - Testing, build and tooling choices (e.g. "valgrind + test scripts") are
+     out of scope for decisions.
+   Rebuild the cs50final map afterwards and compare.
+   Skipping is already decided and built: `rederive_log_problem({ skipped: true })`
+   writes `## D<n>. <title>\nskipped`, and the problem comes back after the
+   untouched ones. The teacher instructions should use it when the learner skips.
 6. **Routing eval.** `tests\routing-prompts.md`: ~15 prompts tagged with the
    expected mode (5 rederive, 5 onboarding, 5 normal), including tricky ones.
    User runs them in fresh sessions; tune instruction examples from failures.

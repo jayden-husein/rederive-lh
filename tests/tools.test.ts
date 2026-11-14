@@ -1,15 +1,21 @@
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
+import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { ModelCatalogResponse, PluginTaskSnapshot, PluginToolContext } from "learnharness-plugin-api";
+import { MapStore } from "../src/map-store.ts";
 import { SessionStore } from "../src/sessions.ts";
-import { createTools, repoDataDir, type ToolDeps } from "../src/tools.ts";
-import { makeGitRepo, removeDir, SAMPLE_README, tempDir } from "./helpers.ts";
+import { buildMapDefinition, createTools, type ToolDeps } from "../src/tools.ts";
+import { BUILD_LIMITS } from "../src/worker.ts";
+import { makeGitRepo, removeDir, SAMPLE_README, succeededTask, tempDir } from "./helpers.ts";
 
 let workspace: string;
 let repo: string;
 let deps: ToolDeps;
 let activation: AbortController;
+let tasks: PluginTaskSnapshot[];
+let cheapSlot: ModelCatalogResponse["slots"]["cheap"];
 
 before(() => {
   workspace = tempDir("tools");
@@ -17,15 +23,30 @@ before(() => {
     { files: { "README.md": SAMPLE_README, "crawler.c": "\n" }, message: "initial" },
   ]);
   activation = new AbortController();
+  tasks = [];
+  cheapSlot = { model: { provider: "test", id: "cheap-model" } } as ModelCatalogResponse["slots"]["cheap"];
   const data = join(workspace, "data");
-  deps = { store: new SessionStore(data), dataDirectory: data, signal: activation.signal };
+  deps = {
+    store: new SessionStore(data),
+    maps: new MapStore(data, () => tasks),
+    dataDirectory: data,
+    signal: activation.signal,
+    listTasks: () => tasks,
+    catalog: async () => ({ slots: { cheap: cheapSlot } }) as ModelCatalogResponse,
+    // Stand-in for ctx.createBackgroundTool: keep the definition so tests can call prepare/format.
+    createBackgroundTool: (_context, definition) => ({ ...definition, execute: async () => { throw new Error("host only"); } }) as AgentTool<any>,
+  };
 });
 
 after(() => removeDir(workspace));
 
 function tools(chatId: string) {
-  const [openRepo, setMode, status] = createTools(deps, { chatId, agent: "teacher" });
-  return { openRepo: openRepo!, setMode: setMode!, status: status! };
+  const [openRepo, setMode, status, buildMap, nextProblem, logProblem] = createTools(deps, { chatId, agent: "teacher" });
+  return { openRepo: openRepo!, setMode: setMode!, status: status!, buildMap: buildMap!, nextProblem: nextProblem!, logProblem: logProblem! };
+}
+
+function context(chatId: string): PluginToolContext {
+  return { chatId, agent: "teacher" };
 }
 
 function textOf(result: { content: { type: string; text?: string }[] }): string {
@@ -71,13 +92,121 @@ test("set_mode persists per chat and status reports it", async () => {
   assert.match(textOf(await b.status.execute("4", {})), /Mode: not set/);
 });
 
-test("status sees a map once map.json exists", async () => {
-  const { status } = tools("chat-a");
-  const id = (await status.execute("1", {})).details.repo!.id;
-  const dir = repoDataDir(deps.dataDirectory, id);
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, "map.json"), "{}");
-  assert.equal((await status.execute("2", {})).details.mapExists, true);
+// --- decision map ----------------------------------------------------------
+
+test("build_map needs an open repo", async () => {
+  await assert.rejects(Promise.resolve(buildMapDefinition(deps).prepare({}, context("chat-none"))), /No repo is open/);
+});
+
+test("build_map gives a clear error without a cheap model", async () => {
+  const saved = cheapSlot;
+  cheapSlot = null;
+  try {
+    await assert.rejects(Promise.resolve(buildMapDefinition(deps).prepare({}, context("chat-a"))), /No cheap model is configured/);
+  } finally {
+    cheapSlot = saved;
+  }
+});
+
+test("build_map prepares worker input, prompt, cheap model and limits", async () => {
+  const start = await buildMapDefinition(deps).prepare({}, context("chat-a"));
+  const repoId = (await deps.store.getChat("chat-a")).repo!.id;
+  assert.deepEqual(start.model, { provider: "test", id: "cheap-model" });
+  assert.equal(start.maxTurns, BUILD_LIMITS.maxTurns);
+  assert.equal(start.timeoutMs, BUILD_LIMITS.timeoutMs);
+  assert.deepEqual(start.input, { repoId, repoName: "tiny-search", repoPath: repo, builtFrom: (start.input as { builtFrom: string }).builtFrom });
+  assert.match((start.input as { builtFrom: string }).builtFrom, /^[0-9a-f]{7,}$/);
+  assert.match(start.prompt, /# Code structure/);
+});
+
+test("build_map refuses while a build is running", async () => {
+  const repoId = (await deps.store.getChat("chat-a")).repo!.id;
+  tasks.push({ ...succeededTask("running", repoId, "2026-11-14T09:00:00.000Z"), status: "running" } as PluginTaskSnapshot);
+  try {
+    await assert.rejects(Promise.resolve(buildMapDefinition(deps).prepare({}, context("chat-a"))), /already being built/);
+    const s = await tools("chat-a").status.execute("1", {});
+    assert.equal(s.details.mapBuilding, true);
+    assert.match(textOf(s), /being built in the background/);
+    assert.equal((await tools("chat-a").nextProblem.execute("2", {})).details.state, "building");
+  } finally {
+    tasks.pop();
+  }
+});
+
+test("next_problem says to build a map when none exists", async () => {
+  const result = await tools("chat-a").nextProblem.execute("1", {});
+  assert.equal(result.details.state, "no-map");
+  assert.match(textOf(result), /rederive_build_map/);
+});
+
+test("format reports only the problem count, never the decisions", () => {
+  const def = buildMapDefinition(deps);
+  const done = def.format({ id: "t", status: "succeeded", result: succeededTask("t", "r", "x").result }, context("chat-a")) as { text: string; data: unknown };
+  assert.match(done.text, /^Map ready: 5 problems\./);
+  assert.doesNotMatch(JSON.stringify(done), /technique|Constraint/);
+  const failed = def.format({ id: "t", status: "failed", error: { code: "timeout", message: "took too long" } }, context("chat-a")) as { text: string };
+  assert.match(failed.text, /failed: took too long/);
+});
+
+test("once a build finishes, problems run in map order and get logged", async () => {
+  const repoId = (await deps.store.getChat("chat-a")).repo!.id;
+  tasks.push(succeededTask("t1", repoId, "2026-11-14T10:00:00.000Z"));
+  const t = tools("chat-a");
+
+  const s = await t.status.execute("1", {});
+  assert.equal(s.details.mapExists, true);
+  assert.equal(s.details.nextProblemId, "D1");
+
+  const first = await t.nextProblem.execute("2", {});
+  assert.deepEqual(first.details, { id: "D1", state: "loaded", revisit: false });
+  assert.match(textOf(first), /Problem D1 \(hidden from the learner/);
+  assert.match(textOf(first), /1\. Constraint 1 -> breaks: the naive design/);
+  assert.match(textOf(first), /Decision \(the learner must reach this; never state it\): technique 1/);
+
+  const logged = await t.logProblem.execute("3", { id: "D1", struggled: "s", foundAlone: "f", didWell: "w", didOk: "o", betterIdea: "b" });
+  assert.equal(logged.details.nextProblemId, "D2");
+  const log = readFileSync(deps.maps.logFile(repoId), "utf8");
+  assert.equal(log, "## D1. Problem 1\nstruggled with: s\nfound on their own: f\ndid well: w\ndid ok: o\nbetter idea: b\n");
+
+  assert.equal((await t.nextProblem.execute("4", {})).details.id, "D2");
+  assert.equal((await t.nextProblem.execute("5", { id: "D4" })).details.id, "D4");
+  await assert.rejects(t.nextProblem.execute("6", { id: "D9" }), /No problem D9/);
+  await assert.rejects(t.logProblem.execute("7", { id: "D1", struggled: "s", foundAlone: "f", didWell: "w", didOk: "o" }), /already logged/);
+});
+
+test("build_map won't overwrite a map unless asked to rebuild", async () => {
+  await assert.rejects(Promise.resolve(buildMapDefinition(deps).prepare({}, context("chat-a"))), /already has a map/);
+  await assert.doesNotReject(Promise.resolve(buildMapDefinition(deps).prepare({ rebuild: true }, context("chat-a"))));
+});
+
+test("log_problem needs every note unless the problem was skipped", async () => {
+  const t = tools("chat-a");
+  await assert.rejects(t.logProblem.execute("1", { id: "D2", struggled: "s" }), /Missing foundAlone, didWell, didOk.*skipped: true/);
+  const skipped = await t.logProblem.execute("2", { id: "D2", skipped: true });
+  assert.deepEqual(skipped.details, { id: "D2", skipped: true, nextProblemId: "D3" });
+  assert.match(textOf(skipped), /Marked D2 as skipped.*comes back after the other problems/);
+});
+
+test("a skipped problem comes back, flagged, after the untouched ones", async () => {
+  const t = tools("chat-a");
+  for (const id of ["D3", "D4", "D5"]) {
+    await t.logProblem.execute(id, { id, struggled: "s", foundAlone: "f", didWell: "w", didOk: "o" });
+  }
+  const back = await t.nextProblem.execute("1", {});
+  assert.deepEqual(back.details, { id: "D2", state: "loaded", revisit: true });
+  assert.match(textOf(back), /skipped this problem earlier/);
+  assert.match(textOf(await t.status.execute("2", {})), /Next problem: D2 \(skipped earlier\)/);
+});
+
+test("after the last problem, next_problem points to the log", async () => {
+  const t = tools("chat-a");
+  for (const id of ["D2"]) {
+    await t.logProblem.execute(id, { id, struggled: "s", foundAlone: "f", didWell: "w", didOk: "o" });
+  }
+  const done = await t.nextProblem.execute("1", {});
+  assert.equal(done.details.state, "all-done");
+  assert.match(textOf(done), /log\.md/);
+  assert.match(textOf(await t.status.execute("2", {})), /Every problem is logged/);
 });
 
 test("tools refuse to run after the plugin is deactivated", async () => {

@@ -38,22 +38,37 @@ test("frontend bundle is an ES module exporting activate", () => {
   assert.match(source, /export\s*\{[^}]*\bactivate\b/);
 });
 
-test("backend registers the rederive tools for prober and teacher", () => {
+test("backend registers the build-map worker and the rederive tools for prober and teacher", () => {
   const backend = createRequire(import.meta.url)(join(dist, "backend.cjs"));
   assert.equal(typeof backend.activate, "function");
 
   const registrations: { agents: string[]; create: (c: object) => any[] }[] = [];
+  const workers: { id: string; tools?: unknown; validateResult?: unknown }[] = [];
   const controller = new AbortController();
   backend.activate({
     signal: controller.signal,
     dataDirectory: join(dist, "unused-data"),
     registerTools: (r: any) => registrations.push(r),
+    workers: { register: (d: any) => (workers.push(d), () => {}), list: () => [] },
+    inference: { catalog: async () => ({ slots: { cheap: null } }) },
+    createBackgroundTool: (_c: object, d: { name: string }) => ({ ...d, execute: async () => ({}) }),
   });
+
+  assert.deepEqual(workers.map((w) => w.id), ["build-map"]);
+  assert.equal(typeof workers[0]!.tools, "function");
+  assert.equal(typeof workers[0]!.validateResult, "function");
 
   assert.equal(registrations.length, 1);
   const registration = registrations[0]!;
   assert.deepEqual(registration.agents, ["prober", "teacher"]);
   const names = registration.create({ chatId: "chat-1", agent: "teacher" }).map((t) => t.name);
-  assert.deepEqual(names, ["rederive_open_repo", "rederive_set_mode", "rederive_status"]);
+  assert.deepEqual(names, [
+    "rederive_open_repo",
+    "rederive_set_mode",
+    "rederive_status",
+    "rederive_build_map",
+    "rederive_next_problem",
+    "rederive_log_problem",
+  ]);
   controller.abort();
 });

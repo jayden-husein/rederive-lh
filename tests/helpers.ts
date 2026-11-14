@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import type { PluginTaskSnapshot } from "learnharness-plugin-api";
 
 export function tempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), `rederive-${prefix}-`));
@@ -64,3 +65,33 @@ export const SAMPLE_README = [
   "## Usage",
   "Run the querier after indexing.",
 ].join("\n");
+
+/** A valid worker result with `count` decisions (D1..Dn), for map/tool tests. */
+export function sampleMapResult(count = 5) {
+  return {
+    rootProblem: "Finding pages about a word on a small website takes too long by hand.",
+    decisions: Array.from({ length: count }, (_, i) => ({
+      id: `D${i + 1}`,
+      title: `Problem ${i + 1}`,
+      problem: `Something has to work (${i + 1}).`,
+      given: "Earlier parts.",
+      constraints: [{ text: `Constraint ${i + 1}`, breaks: "the naive design" }],
+      decision: { technique: `technique ${i + 1}`, definition: "A definition.", inThisCode: "index.c does it." },
+      options: [
+        { approach: "real approach", tradeoff: "good" },
+        { approach: "other approach", tradeoff: "worse" },
+      ],
+      evidence: "code only",
+    })),
+  };
+}
+
+/** A build-map task snapshot, as `ctx.workers.list()` would return it. */
+export function succeededTask(id: string, repoId: string, completedAt: string, result: unknown = sampleMapResult()): PluginTaskSnapshot {
+  return {
+    version: 1, id, definitionId: "build-map", status: "succeeded", requestId: id,
+    input: { repoId, repoName: "tiny-search", repoPath: "unused", builtFrom: "abc1234" },
+    prompt: "", model: { provider: "p", id: "m" }, purpose: "background", maxTurns: 30,
+    createdAt: completedAt, updatedAt: completedAt, completedAt, messages: [], turns: 1, result,
+  } as unknown as PluginTaskSnapshot;
+}
