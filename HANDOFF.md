@@ -426,6 +426,14 @@ storing `{ defaultMode: "ask" | "auto" | "always" | "never", defaultRepo }`.
    Logic in `scripts\routing-eval.ts`, tested in `tests\routing-eval.test.ts`.
    Next: the user runs the 15 prompts; then tune the examples in `MODES` /
    `routing()` in `src\instructions.ts` from the failures and re-run those.
+
+   **Run 1 (2026-11-14): 14/14 pass, R5 not run yet.** No routing question
+   was asked on any row. No mode carried over from earlier chats: every
+   chat's `rederive_status` said "Mode: not set", and the same repos got
+   rederive in R rows and onboarding in O rows. Not routing, but seen: the
+   own-repo guess said cs50final is "likely someone else's" (few commits
+   with the learner's git email) although R2 says "my CS50 final project"
+   and O4 "I wrote it"; the learner's words should win over the guess.
 8. **README.** What it does, install, modes, screenshots placeholder, credits.
 
 ### Skills to use per step
