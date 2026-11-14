@@ -450,6 +450,11 @@ storing `{ defaultMode: "ask" | "auto" | "always" | "never", defaultRepo }`.
    teacher's opening are still unchecked. Seen: after "group project, I
    wrote some", the prober promised "we'll keep track of which parts you
    wrote", which nothing in the plugin does.
+   Continued (same chat): the handoff named no design problem, and the
+   teacher made the two-node plan and posed the root problem with no
+   solution terms. Left: the prober's closing line still named the
+   components ("decisions in the crawler, indexer and querier"), which
+   hints at the split, and it repeated the mode message twice.
 8. **README.** What it does, install, modes, screenshots placeholder, credits.
 
 ### Skills to use per step
