@@ -2,6 +2,7 @@
 // read one chat transcript and say which mode the prober picked. Pure functions;
 // routing-report.ts does the file reading.
 import { TOOL_NAMES } from "../src/names.ts";
+import type { Chat } from "./transcripts.ts";
 
 const EXPECTED = ["rederive", "onboarding", "normal"] as const;
 export type Expected = (typeof EXPECTED)[number];
@@ -41,37 +42,6 @@ export function parsePrompts(markdown: string): RoutingPrompt[] {
 /** Compare prompts by words only: copying from rendered markdown drops the backticks. */
 export function normalize(text: string): string {
   return text.replace(/`/g, "").replace(/\s+/g, " ").trim().toLowerCase();
-}
-
-// Transcript shapes, as far as this file reads them (LearnHarness chat JSON, version 2).
-interface Part {
-  type?: string;
-  text?: string;
-  name?: string;
-  id?: string;
-  arguments?: Record<string, unknown>;
-}
-interface Message {
-  role?: string;
-  content?: string | Part[];
-  toolCallId?: string;
-  isError?: boolean;
-}
-export interface Chat {
-  id?: string;
-  createdAt?: string;
-  messages?: Message[];
-}
-
-function textOf(content: Message["content"]): string {
-  if (typeof content === "string") return content;
-  return (content ?? []).map((p) => (p.type === "text" ? (p.text ?? "") : "")).join("");
-}
-
-/** The learner's opening message, or "" when the chat has none. */
-export function firstUserText(chat: Chat): string {
-  const first = (chat.messages ?? []).find((m) => m.role === "user");
-  return first ? textOf(first.content) : "";
 }
 
 // The routing question from src/instructions.ts; tests check the two stay in step.

@@ -15,7 +15,11 @@
     "summary": "node scripts/summary.ts",
     "test": "node --test \"tests/**/*.test.ts\"",
     "measure": "node scripts/measure.ts",
-    "routing-report": "node scripts/routing-report.ts"
+    "routing-report": "node scripts/routing-report.ts",
+    "transcript": "node scripts/transcript.ts",
+    "leak-check": "node scripts/leak-check.ts",
+    "check": "npm run typecheck && npm test",
+    "prepare": "git config core.hooksPath .githooks"
   },
   "devDependencies": {
     "@earendil-works/pi-agent-core": "1.4.0",

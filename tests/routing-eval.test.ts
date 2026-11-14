@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { type Chat, classifyChat, firstUserText, normalize, parsePrompts, passes, ROUTING_QUESTION } from "../scripts/routing-eval.ts";
+import { classifyChat, normalize, parsePrompts, passes, ROUTING_QUESTION } from "../scripts/routing-eval.ts";
+import { type Chat, firstUserText } from "../scripts/transcripts.ts";
 import { proberInstructions } from "../src/instructions.ts";
 import { DEFAULT_SETTINGS } from "../src/settings.ts";
 

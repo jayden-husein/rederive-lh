@@ -1,34 +1,26 @@
 // Scores the routing eval from LearnHarness chat transcripts (read-only).
 // Usage: npm run routing-report -- [--since <ISO time>] [--chats <chats folder>]
 // The chats folder defaults to <learning data>/chats, two levels above this plugin.
-import { readdir, readFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { type Chat, classifyChat, firstUserText, normalize, parsePrompts, passes } from "./routing-eval.ts";
+import { classifyChat, normalize, parsePrompts, passes } from "./routing-eval.ts";
+import { type Chat, DEFAULT_CHATS_DIR, firstUserText, PROJECT_ROOT, readChats } from "./transcripts.ts";
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const { values } = parseArgs({ options: { since: { type: "string" }, chats: { type: "string" } } });
-const chatsDir = values.chats ?? resolve(root, "..", "..", "chats");
+const chatsDir = values.chats ?? DEFAULT_CHATS_DIR;
 const since = values.since ? Date.parse(values.since) : -Infinity;
 if (Number.isNaN(since)) {
   console.error(`--since is not a date: ${values.since}`);
   process.exit(2);
 }
 
-const prompts = parsePrompts(await readFile(join(root, "tests", "routing-prompts.md"), "utf8"));
+const prompts = parsePrompts(await readFile(join(PROJECT_ROOT, "tests", "routing-prompts.md"), "utf8"));
 const byText = new Map(prompts.map((p) => [normalize(p.prompt), p]));
 
 // Newest matching chat per prompt.
 const latest = new Map<string, { chat: Chat; at: number }>();
-for (const name of await readdir(chatsDir)) {
-  if (!name.endsWith(".json")) continue;
-  let chat: Chat;
-  try {
-    chat = JSON.parse(await readFile(join(chatsDir, name), "utf8")) as Chat;
-  } catch {
-    continue; // A chat mid-write or not a transcript.
-  }
+for (const chat of await readChats(chatsDir)) {
   const at = Date.parse(chat.createdAt ?? "");
   if (!(at >= since)) continue;
   const prompt = byText.get(normalize(firstUserText(chat)));

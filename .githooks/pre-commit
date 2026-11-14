@@ -1,0 +1,7 @@
+#!/bin/sh
+# Typecheck and test before every commit. Enabled by `npm install` (the prepare
+# script sets core.hooksPath for this repo only). Skip once with --no-verify.
+# Git sets GIT_INDEX_FILE etc. for hooks; the tests build temp repos with git,
+# so clear them or those repos would write into this repo's index.
+unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_PREFIX GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
+exec npm run check --silent
