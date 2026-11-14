@@ -6,7 +6,7 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { ModelCatalogResponse, PluginTaskSnapshot, PluginToolContext } from "learnharness-plugin-api";
 import { MapStore } from "../src/map-store.ts";
 import { SessionStore } from "../src/sessions.ts";
-import { buildMapDefinition, createTools, type ToolDeps } from "../src/tools.ts";
+import { buildMapDefinition, createTools, openRepoForChat, type ToolDeps } from "../src/tools.ts";
 import { BUILD_LIMITS } from "../src/worker.ts";
 import { makeGitRepo, removeDir, SAMPLE_README, succeededTask, tempDir } from "./helpers.ts";
 
@@ -195,7 +195,11 @@ test("a skipped problem comes back, flagged, after the untouched ones", async ()
   const back = await t.nextProblem.execute("1", {});
   assert.deepEqual(back.details, { id: "D2", state: "loaded", revisit: true });
   assert.match(textOf(back), /skipped this problem earlier/);
-  assert.match(textOf(await t.status.execute("2", {})), /Next problem: D2 \(skipped earlier\)/);
+  const statusText = textOf(await t.status.execute("2", {}));
+  assert.match(statusText, /Next problem: D2 \(skipped earlier\)/);
+  // The problem list lets the agent match a learner's "why"; titles only, with progress marks.
+  assert.match(statusText, /D1\. Problem 1 \[done\]\n {2}D2\. Problem 2 \[skipped\]\n {2}D3\. Problem 3 \[done\]/);
+  assert.doesNotMatch(statusText, /technique|Constraint/);
 });
 
 test("after the last problem, next_problem points to the log", async () => {
@@ -207,6 +211,21 @@ test("after the last problem, next_problem points to the log", async () => {
   assert.equal(done.details.state, "all-done");
   assert.match(textOf(done), /log\.md/);
   assert.match(textOf(await t.status.execute("2", {})), /Every problem is logged/);
+});
+
+test("status's description carries the chat's saved mode and repo, read synchronously", async () => {
+  const fresh = new SessionStore(join(workspace, "data-peek"));
+  assert.equal(fresh.peekChat("c"), null, "nothing before warm()");
+  await fresh.warm();
+  const describe = (chatId: string) =>
+    createTools({ ...deps, store: fresh }, { chatId, agent: "teacher" }).find((tool) => tool.name === "rederive_status")!.description;
+  assert.match(describe("c"), /Saved state for this chat at the start of this turn: mode not set, repo none\./);
+
+  // As the top-bar action does it: open a repo and set the mode with no tool call.
+  await openRepoForChat({ ...deps, store: fresh }, "c", repo, activation.signal);
+  await fresh.setMode("c", "rederive");
+  assert.match(describe("c"), /mode rederive, repo "tiny-search"\./);
+  assert.match(describe("other"), /mode not set, repo none\./);
 });
 
 test("tools refuse to run after the plugin is deactivated", async () => {

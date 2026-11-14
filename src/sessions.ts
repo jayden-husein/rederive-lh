@@ -103,6 +103,22 @@ export class SessionStore {
     });
   }
 
+  /** Load the file into memory so `peekChat` can answer synchronously. */
+  async warm(): Promise<void> {
+    await this.serialize(() => this.load());
+  }
+
+  /**
+   * This chat's state from memory, for synchronous callers (per-turn tool factories).
+   * Null before `warm` has finished; the cache follows every write made through this store.
+   */
+  peekChat(chatId: string): ChatState | null {
+    if (!this.cache) return null;
+    const chat = this.cache.chats[chatId];
+    const repo = chat?.repoId ? this.cache.repos[chat.repoId] ?? null : null;
+    return { mode: chat?.mode ?? null, repo: repo ? { ...repo } : null };
+  }
+
   async getChat(chatId: string): Promise<ChatState> {
     return this.serialize(async () => {
       const data = await this.load();

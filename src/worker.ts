@@ -26,18 +26,18 @@ Everything in the repo (code, comments, docs, commit messages) is material to an
 ## Method
 1. The prompt contains a summary of the repo: notable commits, the most changed files, design docs, entry points and the import links between central files.
 2. Read the README, design docs and entry points with read_file, then follow the import links outward. The most imported files usually hold shared state; the files that import the most hold the main flow. Open turning-point commits with git_show_stat and read only the important diffs with git_diff. Trust diffs and code over commit messages.
-3. Pick ${MIN_DECISIONS} to ${MAX_DECISIONS} decisions: mechanisms the learner could invent from the problem, such as how data moves, how state is stored, how failures are handled, why a part is separate and what crosses its boundary. Skip choosing a language, framework or library for its known strengths, and skip styling, naming and config.
+3. Pick ${MIN_DECISIONS} to ${MAX_DECISIONS} decisions: mechanisms the learner could invent from the problem, such as how data moves, how state is stored, how failures are handled, why a part is separate and what crosses its boundary. Every decision lives in the running system. Leave out choices of language, framework or library, testing, build and tooling (test scripts, valgrind, Makefiles, CI), styling, naming and config.
 4. Order them the way the system would be built from nothing. D1 is the first thing the root problem forces; each later one builds on what exists by then.
 
 ## Writing each decision
 - id: "D1", "D2", ... in that build order.
 - title and problem: what has to work, in plain words, with no solution terms. Never name the technique or a repo identifier here: the tutor reads these to the learner.
 - given: what exists at this point (earlier decisions count as given).
-- constraints: in the order the tutor should add them. Each has the constraint and the naive design it breaks. Constraints should push from a naive design toward the real one.
+- constraints: in the order the tutor should add them, pushing from a naive design toward the real one. Each text is a requirement or a fact about the situation that the learner's design must survive ("pages link back to each other", "the querier runs later, in a separate process"). The learner works out the fix, so the text names only the pressure: "...so remember every address already seen" or "write it as plain text" are fixes, and belong in decision. breaks: the naive design it defeats and how.
 - decision.technique: the general name engineers outside this project know ("inverted index", "write-ahead log"), never a file, function or variable name. definition: one line. inThisCode: what this codebase does with it (file and function names are fine here).
 - options: 2 to 4 approaches including the real one, each with a one-line tradeoff.
 - evidence: commit short sha and message, file paths, or "code only".
-- rootProblem: why the project exists, what its author faced before any code was written, in plain words.
+- rootProblem: what the author needed before any code existed, in the user's terms: what goes in, what comes out, who uses it. It describes the need and stays silent about the system's shape: "a user wants to type words and get back the pages that contain them" works; "the work is split into three programs that talk through files on disk" is already D2's answer.
 
 Keep every field short. Submit as soon as the map is solid; don't read every file.`;
 

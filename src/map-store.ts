@@ -127,9 +127,14 @@ export class MapStore {
     return this.serialize(() => this.adopt(repoId));
   }
 
+  /** Which problems the log marks finished or skipped. Read-only. */
+  async progress(repoId: string): Promise<LogProgress> {
+    return parseLog(await readLog(this.logFile(repoId)));
+  }
+
   /** Untouched problems first in map order, then skipped ones; null once all are done. */
   async nextProblem(repoId: string, map: StoredMap): Promise<NextProblem | null> {
-    return pickNext(map, parseLog(await readLog(this.logFile(repoId))));
+    return pickNext(map, await this.progress(repoId));
   }
 
   /**

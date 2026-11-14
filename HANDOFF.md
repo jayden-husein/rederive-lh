@@ -305,7 +305,7 @@ storing `{ defaultMode: "ask" | "auto" | "always" | "never", defaultRepo }`.
 
 `learnharness-plugins` is required every step (see CLAUDE.md) and stays the
 authority on the plugin API. The `mattpocock-skills` plugin (installed at user
-scope) covers process. Steps 1–3 are done.
+scope) covers process. Steps 1–4 are done; step 5 is built and waiting for the user's in-app test.
 
 | Step | Skills | What for |
 |---|---|---|
@@ -332,9 +332,34 @@ scope) covers process. Steps 1–3 are done.
 
 ---
 
-## 9. Open questions (ask the user, don't guess)
+## 9. Decisions (settled with the user in step 5)
 
-- Default mode for new installs: "ask" or "auto"?
-- Should practice sessions get the plugin too (e.g. practice problems from the
-  log's weak spots)? Currently out of scope.
-- Where cloned URL repos should live if `dataDirectory` gets large.
+- Default mode for new installs: **auto** (route from the learner's words; ask the
+  routing question once only when the goal is unclear). Settings: ask / auto /
+  always / never, as described in `src/settings.ts`.
+- Default repo: the prober suggests it when the learner names no repo and opens it
+  only after they confirm.
+- Top-bar action "Rederive this repo" (mod+shift+r, teaching sessions): a dialog
+  with the path prefilled from the default repo; the backend opens the repo and sets
+  the chat to rederive. It can't post a chat message, so `rederive_status`'s
+  description carries the chat's saved mode/repo every turn, and the teacher
+  re-checks status when it differs. The agent starts the map build on its next turn.
+- The prober decides the mode first, then (rederive/onboarding only) gets the repo,
+  sets the mode, starts the map build and hands off without its prerequisite quiz.
+- Concept gaps inside rederive: name the gap, teach it in 1–2 short messages, check
+  with one question, repeat the same constraint. Mode stays rederive.
+- Own repo → "Why did you build this?"; someone else's or unknown → pose the root
+  problem. No separate ownership question.
+- Cards show fixed text only ("Problem loaded", "Progress logged", …), never ids,
+  counts or map content. `rederive_open_repo` keeps the host card.
+- `rederive_status` lists problem titles with [done]/[skipped] marks for the agent
+  only, so onboarding can match a learner's "why" to a problem.
+- Practice sessions: out of scope. Cloned repos stay in `dataDirectory\repos`.
+- A URL for a repo the learner already cloned locally is cloned again (no
+  origin-matching). The user chose to skip this; give a local path instead.
+
+## 10. Unverified assumptions (check in the app)
+
+- The top-bar action's `context.sessionId` is the same id as the tools'
+  `PluginToolContext.chatId`. The SDK types don't say so. If the action's mode
+  change doesn't show up in the chat, this is why.
