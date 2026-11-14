@@ -19,7 +19,8 @@ import {
   repoId,
   type Ownership,
 } from "./repo.ts";
-import { TOOL_NAMES } from "./names.ts";
+import { modeRules } from "./instructions.ts";
+import { LOG_ACTION_NAME, TOOL_NAMES } from "./names.ts";
 import { MODES, type Mode, type RepoRecord, type SessionStore } from "./sessions.ts";
 
 export interface ToolDeps {
@@ -176,7 +177,10 @@ export function createSetModeTool(deps: ToolDeps, context: PluginToolContext): A
       checkAborted(signal);
       if (!(MODES as readonly string[]).includes(input.mode)) throw new Error(`Unknown mode: ${String(input.mode)}`);
       await deps.store.setMode(context.chatId, input.mode);
-      return { content: text(`Mode set to ${input.mode}.`), details: { mode: input.mode } };
+      // This turn's status description was built before the switch, so a mid-turn switch
+      // hands the teacher the new mode's rules here.
+      const rules = context.agent === "teacher" ? modeRules(input.mode) : "";
+      return { content: text(rules ? `Mode set to ${input.mode}. Follow these rules from now on:\n\n${rules}` : `Mode set to ${input.mode}.`), details: { mode: input.mode } };
     },
   };
 }
@@ -194,32 +198,51 @@ export interface StatusDetails {
   nextProblemId: string | null;
 }
 
+const ALL_DONE =
+  `Every problem is logged. Tell the learner their log is behind the "${LOG_ACTION_NAME}" button in the top bar, ` +
+  "and suggest looking across it for a pattern.";
+
+const RESTART =
+  `Restart requested: the learner pressed "Rederive this repo" for this repo. Start over as at the start of a session: ` +
+  `build the map if it is neither built nor building, then open with the root problem.`;
+
 /**
- * One line naming the chat's saved mode and repo, read synchronously when the turn's
- * tools are built. It reaches the agent even when the learner changed the mode from the
- * top-bar action, which posts no chat message.
+ * The chat's saved mode and repo, read synchronously when the turn's tools are built,
+ * plus a pending restart. It reaches the agent even when the learner used the top-bar
+ * action, which posts no chat message.
  */
-export function savedStateLine(deps: Pick<ToolDeps, "store">, chatId: string): string {
-  const state = deps.store.peekChat(chatId);
+export function savedStateLine(deps: Pick<ToolDeps, "store">, context: PluginToolContext): string {
+  const state = deps.store.peekChat(context.chatId);
   if (!state) return "";
   const mode = state.mode ?? "not set";
   const repo = state.repo ? `"${state.repo.name}"` : "none";
-  return ` Saved state for this chat at the start of this turn: mode ${mode}, repo ${repo}.`;
+  // The restart is the teacher's to act on, so only its status call takes it.
+  const restart = state.startPending && context.agent === "teacher"
+    ? ` The saved state changed: the learner pressed "Rederive this repo". Call ${TOOL_NAMES.status} now.`
+    : "";
+  return ` Saved state for this chat at the start of this turn: mode ${mode}, repo ${repo}.${restart}`;
+}
+
+function statusDescription(deps: Pick<ToolDeps, "store">, context: PluginToolContext): string {
+  const base =
+    "Rederive plugin: this chat's saved teaching mode, open repo and map progress. " +
+    "Call on your first turn after a handoff, or when earlier history seems summarized." +
+    savedStateLine(deps, context);
+  // The prober only routes; the teaching rules are for the teacher, in this chat's mode.
+  const rules = context.agent === "teacher" ? modeRules(deps.store.peekChat(context.chatId)?.mode ?? null) : "";
+  return rules ? `${base}\n\n${rules}` : base;
 }
 
 export function createStatusTool(deps: ToolDeps, context: PluginToolContext): AgentTool<typeof StatusParameters, StatusDetails> {
   return {
     name: TOOL_NAMES.status,
     label: "Rederive status",
-    description:
-      "Rederive plugin: this chat's saved teaching mode, open repo and map progress. " +
-      "Call on your first turn after a handoff, or when earlier history seems summarized." +
-      savedStateLine(deps, context.chatId),
+    description: statusDescription(deps, context),
     parameters: StatusParameters,
     execute: async (_id, _input, toolSignal) => {
       const signal = combinedSignal(deps, toolSignal);
       checkAborted(signal);
-      const state = await deps.store.getChat(context.chatId);
+      const state = context.agent === "teacher" ? await deps.store.takeChat(context.chatId) : await deps.store.getChat(context.chatId);
       const map = state.repo ? await deps.maps.current(state.repo.id) : null;
       const building = state.repo ? pendingBuild(deps.listTasks, state.repo.id) !== null : false;
       const next = state.repo && map ? await deps.maps.nextProblem(state.repo.id, map) : null;
@@ -252,9 +275,12 @@ export function createStatusTool(deps: ToolDeps, context: PluginToolContext): Ag
         ];
       }
       const lines = [
+        state.startPending && context.agent === "teacher" ? RESTART : "",
         `Mode: ${state.mode ?? "not set"}.`,
         state.repo ? `Repo: "${state.repo.name}" at ${state.repo.path}.` : "Repo: none opened in this chat.",
         mapLine,
+        // next_problem sends the root problem only with D1, so status carries it after compaction.
+        map ? `Root problem (no solution terms): ${map.rootProblem}` : "",
         ...problems,
       ].filter(Boolean);
       return { content: text(lines.join("\n")), details };
@@ -356,22 +382,24 @@ export interface NextProblemDetails {
   revisit?: boolean;
 }
 
+/**
+ * A problem as the agent runs it. Hidden from the learner. The evidence is left out (the
+ * agent never needs it to teach), and the root problem only comes with the first one.
+ */
 export function formatProblemForAgent(map: StoredMap, d: Decision, revisit = false): string {
+  const first = map.decisions[0]?.id === d.id;
   return [
-    `Problem ${d.id} (hidden from the learner; never reveal the decision, technique name or options list unprompted).`,
-    revisit ? "The learner skipped this problem earlier. Say you're coming back to it, then open it fresh." : "",
-    `Root problem: ${map.rootProblem}`,
-    `Title: ${d.title}`,
+    `Problem ${d.id}, for you only.`,
+    revisit ? "Skipped earlier: say you're coming back to it, then open it fresh." : "",
+    first ? `Root problem: ${map.rootProblem}` : "",
     `Problem: ${d.problem}`,
     `Given: ${d.given}`,
-    "Constraints, add one at a time in this order:",
-    ...d.constraints.map((c, i) => `  ${i + 1}. ${c.text} -> breaks: ${c.breaks}`),
-    `Decision (the learner must reach this; never state it): ${d.decision.technique}: ${d.decision.definition} In this code: ${d.decision.inThisCode}`,
-    "Options, only to lay out when the learner is stuck:",
-    ...d.options.map((o) => `  - ${o.approach}: ${o.tradeoff}`),
-    `Evidence: ${d.evidence}`,
-    `When the learner has polished their design, call ${TOOL_NAMES.logProblem} with id "${d.id}". ` +
-      `If they skip it without a design, call it with skipped: true instead; it comes back after the others.`,
+    "Constraints, one at a time:",
+    ...d.constraints.map((c, i) => `${i + 1}. ${c.text} -> breaks: ${c.breaks}`),
+    `Decision (never state it): ${d.decision.technique}: ${d.decision.definition} Here: ${d.decision.inThisCode}`,
+    "Options (only when stuck):",
+    ...d.options.map((o) => `- ${o.approach}: ${o.tradeoff}`),
+    `Done: ${TOOL_NAMES.logProblem} id ${d.id}. Skipped: ${TOOL_NAMES.skipProblem}.`,
   ]
     .filter(Boolean)
     .join("\n");
@@ -405,7 +433,7 @@ export function createNextProblemTool(deps: ToolDeps, context: PluginToolContext
       }
       if (!next) {
         return {
-          content: text(`Every problem is logged. Tell the learner their work is logged at ${deps.maps.logFile(repo.id)} and suggest looking across it for a pattern.`),
+          content: text(ALL_DONE),
           details: { id: null, state: "all-done" },
         };
       }
@@ -421,20 +449,21 @@ export function createNextProblemTool(deps: ToolDeps, context: PluginToolContext
 
 const Note = (description: string) => Type.String({ minLength: 1, maxLength: 1000, description });
 
+const ProblemId = Type.String({ pattern: "^D\\d+$", description: 'e.g. "D1"' });
+
 const LogProblemParameters = Type.Object(
   {
-    id: Type.String({ pattern: "^D\\d+$", description: 'The problem, e.g. "D1".' }),
-    skipped: Type.Optional(
-      Type.Boolean({ description: "True when the learner skipped the problem without a design. Leave out the notes; the problem comes back later." }),
-    ),
-    struggled: Type.Optional(Note("Where they got stuck or went wrong, and what got them moving. Required unless skipped.")),
-    foundAlone: Type.Optional(Note("Ideas they reached without a hint. Required unless skipped.")),
-    didWell: Type.Optional(Note("What was strong. Required unless skipped.")),
-    didOk: Type.Optional(Note("What worked but was shaky or needed help. Required unless skipped.")),
-    betterIdea: Type.Optional(Note("Only if they proposed a design better than the original.")),
+    id: ProblemId,
+    struggled: Note("Where they got stuck and what got them moving."),
+    foundAlone: Note("Ideas they reached without a hint."),
+    didWell: Note("What was strong."),
+    didOk: Note("What worked but was shaky."),
+    betterIdea: Type.Optional(Note("Only if their design beat the original.")),
   },
   { additionalProperties: false },
 );
+
+const SkipProblemParameters = Type.Object({ id: ProblemId }, { additionalProperties: false });
 
 export interface LogProblemDetails {
   id: string;
@@ -442,22 +471,46 @@ export interface LogProblemDetails {
   nextProblemId: string | null;
 }
 
-const REQUIRED_NOTES = ["struggled", "foundAlone", "didWell", "didOk"] as const;
+/**
+ * Notes that describe a skip rather than a finished design. Logging those as finished
+ * marks the problem done for good, which is what happened in the first in-app test.
+ */
+const SKIP_NOTE = /\b(not attempted|didn't attempt|did not attempt|skipped (it|this|the problem)|without a design)\b/i;
 
-/** A finished entry needs all four notes; a skip needs none. */
-function logEntryFrom(input: Static<typeof LogProblemParameters>): LogEntry | "skipped" {
-  if (input.skipped) return "skipped";
-  const missing = REQUIRED_NOTES.filter((k) => !input[k]?.trim());
-  if (missing.length) {
-    throw new Error(`Missing ${missing.join(", ")}. Fill in every note for a finished problem, or pass skipped: true if the learner skipped it.`);
+function logEntryFrom(input: Static<typeof LogProblemParameters>): LogEntry {
+  const notes = [input.struggled, input.foundAlone, input.didWell, input.didOk];
+  if (notes.some((n) => !n.trim())) throw new Error("Fill in every note for a finished problem.");
+  if (notes.some((n) => SKIP_NOTE.test(n))) {
+    throw new Error(`These notes describe a skip. If the learner skipped ${input.id} without a design, call ${TOOL_NAMES.skipProblem} instead.`);
   }
   return {
-    struggled: input.struggled!,
-    foundAlone: input.foundAlone!,
-    didWell: input.didWell!,
-    didOk: input.didOk!,
-    ...(input.betterIdea ? { betterIdea: input.betterIdea } : {}),
+    struggled: input.struggled,
+    foundAlone: input.foundAlone,
+    didWell: input.didWell,
+    didOk: input.didOk,
+    ...(input.betterIdea?.trim() ? { betterIdea: input.betterIdea } : {}),
   };
+}
+
+/** Write one log entry and return the next problem, so the agent opens it in the same turn. */
+async function recordProblem(
+  deps: ToolDeps,
+  chatId: string,
+  id: string,
+  entry: LogEntry | "skipped",
+  toolSignal: AbortSignal | undefined,
+): Promise<{ content: ReturnType<typeof text>; details: LogProblemDetails }> {
+  const signal = combinedSignal(deps, toolSignal);
+  checkAborted(signal);
+  const repo = await currentRepo(deps, chatId);
+  if (!(await deps.maps.hasMap(repo.id))) throw new Error(`No map for this repo yet. Call ${TOOL_NAMES.buildMap} first.`);
+  const { decision, next, map } = await deps.maps.logProblem(repo.id, id, entry, signal);
+  const skipped = entry === "skipped";
+  const lines = [
+    skipped ? `${decision.id} skipped; it comes back after the others.` : `${decision.id} logged.`,
+    next ? `Open the next problem now, in this turn.\n\n${formatProblemForAgent(map, next.decision, next.revisit)}` : ALL_DONE,
+  ];
+  return { content: text(lines.join("\n")), details: { id: decision.id, skipped, nextProblemId: next?.decision.id ?? null } };
 }
 
 export function createLogProblemTool(deps: ToolDeps, context: PluginToolContext): AgentTool<typeof LogProblemParameters, LogProblemDetails> {
@@ -465,33 +518,37 @@ export function createLogProblemTool(deps: ToolDeps, context: PluginToolContext)
     name: TOOL_NAMES.logProblem,
     label: "Log problem",
     description:
-      "Rederive plugin: record how the learner did on a finished problem, once their design holds up. " +
-      "If they skip a problem without a design, call with skipped: true and no notes; it comes back after the others.",
+      "Rederive plugin: record how the learner did on a problem they finished, once their design holds up. " +
+      `Not for skips: use ${TOOL_NAMES.skipProblem}. Returns the next problem.`,
     parameters: LogProblemParameters,
-    execute: async (_id, input, toolSignal) => {
-      const signal = combinedSignal(deps, toolSignal);
-      checkAborted(signal);
-      const entry = logEntryFrom(input);
-      const repo = await currentRepo(deps, context.chatId);
-      if (!(await deps.maps.hasMap(repo.id))) throw new Error(`No map for this repo yet. Call ${TOOL_NAMES.buildMap} first.`);
-      const { decision, next, file } = await deps.maps.logProblem(repo.id, input.id, entry, signal);
-      const skipped = entry === "skipped";
-      const lines = [
-        skipped ? `Marked ${decision.id} as skipped in ${file}; it comes back after the other problems.` : `Logged ${decision.id} to ${file}.`,
-        next ? `Next problem: ${next.decision.id}${next.revisit ? " (skipped earlier)" : ""}.` : "That was the last problem.",
-      ];
-      return { content: text(lines.join("\n")), details: { id: decision.id, skipped, nextProblemId: next?.decision.id ?? null } };
-    },
+    execute: async (_id, input, toolSignal) => recordProblem(deps, context.chatId, input.id, logEntryFrom(input), toolSignal),
   };
 }
 
+export function createSkipProblemTool(deps: ToolDeps, context: PluginToolContext): AgentTool<typeof SkipProblemParameters, LogProblemDetails> {
+  return {
+    name: TOOL_NAMES.skipProblem,
+    label: "Skip problem",
+    description: "Rederive plugin: the learner skips this problem without a design. It comes back after the others. Returns the next problem.",
+    parameters: SkipProblemParameters,
+    execute: async (_id, input, toolSignal) => recordProblem(deps, context.chatId, input.id, "skipped", toolSignal),
+  };
+}
+
+/**
+ * This turn's loadout. Every chat gets the routing tools (opening a repo and starting its
+ * map can happen in one turn). The problem tools come only for the teacher in a chat with
+ * a repo, which keeps chats with no codebase light.
+ */
 export function createTools(deps: ToolDeps, context: PluginToolContext): AgentTool<any>[] {
-  return [
+  const tools: AgentTool<any>[] = [
     createOpenRepoTool(deps, context),
     createSetModeTool(deps, context),
     createStatusTool(deps, context),
     deps.createBackgroundTool(context, buildMapDefinition(deps)),
-    createNextProblemTool(deps, context),
-    createLogProblemTool(deps, context),
   ];
+  if (context.agent === "teacher" && deps.store.peekChat(context.chatId)?.repo) {
+    tools.push(createNextProblemTool(deps, context), createLogProblemTool(deps, context), createSkipProblemTool(deps, context));
+  }
+  return tools;
 }

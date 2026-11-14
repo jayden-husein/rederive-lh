@@ -15,7 +15,7 @@ test("each tool gets a short fixed card", () => {
   assert.equal(done("rederive_next_problem", { id: "D3", state: "loaded", revisit: true }), "Back to a skipped problem");
   assert.equal(done("rederive_next_problem", { id: null, state: "all-done" }), "Every problem done");
   assert.equal(done("rederive_log_problem", { id: "D1", skipped: false }), "Progress logged");
-  assert.equal(done("rederive_log_problem", { id: "D1", skipped: true }), "Problem skipped for now");
+  assert.equal(done("rederive_skip_problem", { id: "D1", skipped: true }), "Problem skipped for now");
   assert.equal(cardText({ toolName: "rederive_next_problem", state: "output-error" }), "Couldn't load a problem");
 });
 

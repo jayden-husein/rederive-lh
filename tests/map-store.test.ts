@@ -52,6 +52,33 @@ test("a newer build replaces the map and sets the old log aside", async () => {
   assert.equal(map?.decisions.length, 6);
   assert.equal(existsSync(store.logFile("r1")), false);
   assert.ok(readdirSync(repoDataDir(data, "r1")).some((f) => f.startsWith("log.before-")));
+  assert.equal((await store.archivedLogs("r1")).length, 1);
+});
+
+test("a rebuild carries over entries whose problem titles still match, renumbered", async () => {
+  const tasks = [succeededTask("t1", "r1", "2026-11-14T10:00:00.000Z")];
+  const { data, store } = storeWith(tasks, "carry");
+  await store.current("r1");
+  await store.logProblem("r1", "D2", { struggled: "s", foundAlone: "f", didWell: "w", didOk: "o" });
+  await store.logProblem("r1", "D3", "skipped");
+  await store.logProblem("r1", "D4", { struggled: "s4", foundAlone: "f", didWell: "w", didOk: "o" });
+  // The new map drops "Problem 2", keeps "Problem 3" as D1 and "Problem 4" as D2.
+  const rebuilt = sampleMapResult(3);
+  rebuilt.decisions[0]!.title = "problem 3"; // case and spacing don't matter
+  rebuilt.decisions[1]!.title = "Problem  4";
+  rebuilt.decisions[2]!.title = "Something new";
+  tasks.push(succeededTask("t2", "r1", "2026-11-14T11:00:00.000Z", rebuilt));
+  await store.current("r1");
+  assert.equal(
+    readFileSync(store.logFile("r1"), "utf8"),
+    "## D1. problem 3\nskipped\n\n## D2. Problem 4\nstruggled with: s4\nfound on their own: f\ndid well: w\ndid ok: o\n",
+  );
+  const progress = await store.progress("r1");
+  assert.deepEqual([...progress.done], ["D2"]);
+  assert.deepEqual(progress.skipped, ["D1"]);
+  // The whole old log is still kept aside.
+  const [archived] = await store.archivedLogs("r1");
+  assert.match(readFileSync(join(repoDataDir(data, "r1"), archived!), "utf8"), /## D2\. Problem 2/);
 });
 
 test("an invalid task result is never adopted", async () => {

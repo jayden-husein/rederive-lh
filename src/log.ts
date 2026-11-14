@@ -88,3 +88,25 @@ export async function readLog(file: string): Promise<string> {
     throw error;
   }
 }
+
+function titleKey(title: string): string {
+  return oneLine(title).toLowerCase();
+}
+
+/**
+ * The part of an old log that still applies to a rebuilt map: sections whose problem
+ * title matches a new problem's title, renumbered to the new id, in their old order.
+ * Returns "" when nothing matches.
+ */
+export function carryOverLog(oldLog: string, decisions: readonly Pick<Decision, "id" | "title">[]): string {
+  const byTitle = new Map(decisions.map((d) => [titleKey(d.title), d]));
+  const headings = [...oldLog.matchAll(/^## D\d+\. (.*)$/gm)];
+  const kept: string[] = [];
+  headings.forEach((match, i) => {
+    const decision = byTitle.get(titleKey(match[1]!));
+    if (!decision) return;
+    const body = oldLog.slice(match.index + match[0].length, headings[i + 1]?.index ?? oldLog.length).trim();
+    kept.push(`${heading(decision)}\n${body}\n`);
+  });
+  return kept.join("\n");
+}

@@ -3,7 +3,8 @@
 // "Rederive this repo" top-bar action.
 import type { PluginActionContext, PluginFrontendContext, PluginSettingsRow, PluginWidgetHandle } from "learnharness-plugin-api";
 import { cardText, RENDERED_TOOLS } from "./cards.ts";
-import { MAX_SOURCE_CHARS, OPERATIONS, type StartRederiveResult } from "./names.ts";
+import { sourceFromDraft } from "./draft.ts";
+import { LOG_ACTION_NAME, MAX_SOURCE_CHARS, OPERATIONS, type LogView, type StartRederiveResult } from "./names.ts";
 // Type-only: settings.ts is Node code and must stay out of the browser bundle.
 import type { DefaultMode, Settings } from "./settings.ts";
 
@@ -21,6 +22,9 @@ const MODE_OPTIONS: { value: DefaultMode; label: string }[] = [
 
 const ICON =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="12" r="2"/><path d="M6 8v8M8 6h4a4 4 0 0 1 4 4"/></svg>';
+
+const LOG_ICON =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>';
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -153,8 +157,9 @@ function openStartDialog(ctx: PluginFrontendContext, chatId: string, initialSour
                 const result = await ctx.call<StartRederiveResult>(OPERATIONS.startRederive, { chatId, source: trimmed });
                 if (signal.aborted) return;
                 done = true;
+                // There is no public API to post a chat message, so the learner sends one.
                 status.textContent =
-                  `Rederive mode is on for "${result.repoName}". Send a message to begin; the tutor builds the decision map first.` +
+                  `Rederive mode is on for "${result.repoName}". Send any message to start; the tutor builds the decision map first.` +
                   (result.warning ? ` (${result.warning})` : "");
                 start.update({ label: "Close", disabled: false });
                 cancel.dispose();
@@ -186,13 +191,94 @@ function registerStartAction(ctx: PluginFrontendContext, settings: { current: Se
     disabled: (context: PluginActionContext) => !("kind" in context) || context.kind !== "teaching",
     run: async (context) => {
       if (!("kind" in context) || context.surface !== "session" || context.kind !== "teaching") return;
+      // A folder attached in the composer (path only) wins over the default repo.
+      const attached = sourceFromDraft(context.view.composer.text);
       // Prefer fresh settings, but open the dialog even if the backend call fails.
       const latest = await ctx.call<Settings>(OPERATIONS.getSettings).catch(() => settings.current);
       settings.current = latest;
-      openStartDialog(ctx, context.sessionId, latest.defaultRepo);
+      openStartDialog(ctx, context.sessionId, attached ?? latest.defaultRepo);
     },
   });
   ctx.placeAction({ id: "rederive-repo-top-bar", actionId: "rederive-repo", location: "top-bar", sessions: ["teaching"] });
+}
+
+/** Read-only dialog with this chat's log: its path, a copy button and the text. */
+function openLogDialog(ctx: PluginFrontendContext, chatId: string): void {
+  const dialog = ctx.ui.openDialog(
+    {
+      title: LOG_ACTION_NAME,
+      content: (container, signal) => {
+        const doc = container.ownerDocument;
+        const heading = doc.createElement("h2");
+        heading.textContent = "Rederive log";
+        const where = doc.createElement("p");
+        const body = doc.createElement("pre");
+        body.style.cssText = "white-space:pre-wrap;max-height:60vh;overflow:auto;margin:0";
+        const buttons = doc.createElement("div");
+        buttons.style.cssText = "display:flex;gap:8px;justify-content:flex-end;margin-top:8px";
+        const copySlot = doc.createElement("div");
+        const closeSlot = doc.createElement("div");
+        buttons.append(copySlot, closeSlot);
+        container.append(heading, where, body, buttons);
+        where.textContent = "Loading…";
+        ctx.ui.mountButton(closeSlot, { label: "Close", onClick: () => dialog.dispose() }, { signal });
+
+        void ctx
+          .call<LogView>(OPERATIONS.getLog, { chatId })
+          .then((log) => {
+            if (signal.aborted) return;
+            if (!log.path) {
+              where.textContent = "No repo is open in this chat. Use “Rederive this repo” first.";
+              return;
+            }
+            // textContent only: the log holds model-written notes, never rendered as HTML.
+            where.textContent = `${log.repoName}: ${log.path}`;
+            body.textContent = log.text.trim() || "Nothing logged yet.";
+            if (log.archived.length) {
+              const note = doc.createElement("p");
+              note.textContent = `Logs from before a map rebuild sit in the same folder: ${log.archived.join(", ")}.`;
+              container.insertBefore(note, buttons);
+            }
+            const path = log.path;
+            const copy = ctx.ui.mountButton(
+              copySlot,
+              {
+                label: "Copy path",
+                variant: "ghost",
+                onClick: async () => {
+                  try {
+                    await navigator.clipboard.writeText(path);
+                    copy.update({ label: "Copied" });
+                  } catch {
+                    copy.update({ label: "Couldn't copy" });
+                  }
+                },
+              },
+              { signal },
+            );
+          })
+          .catch((error: unknown) => {
+            if (!signal.aborted) where.textContent = errorMessage(error);
+          });
+        return () => container.replaceChildren();
+      },
+    },
+    { signal: ctx.signal },
+  );
+}
+
+function registerLogAction(ctx: PluginFrontendContext): void {
+  ctx.registerAction({
+    id: "rederive-log",
+    name: LOG_ACTION_NAME,
+    icon: LOG_ICON,
+    disabled: (context: PluginActionContext) => !("kind" in context) || context.kind !== "teaching",
+    run: (context) => {
+      if (!("kind" in context) || context.surface !== "session" || context.kind !== "teaching") return;
+      openLogDialog(ctx, context.sessionId);
+    },
+  });
+  ctx.placeAction({ id: "rederive-log-top-bar", actionId: "rederive-log", location: "top-bar", sessions: ["teaching"] });
 }
 
 export function activate(ctx: PluginFrontendContext): void {
@@ -200,4 +286,5 @@ export function activate(ctx: PluginFrontendContext): void {
   registerCards(ctx);
   registerSettingsRows(ctx, settings);
   registerStartAction(ctx, settings);
+  registerLogAction(ctx);
 }

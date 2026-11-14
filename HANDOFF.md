@@ -369,6 +369,29 @@ storing `{ defaultMode: "ask" | "auto" | "always" | "never", defaultRepo }`.
 
    **6e. Routing question as a card.** Routing worked, but the routing
    question was prose. Covered by 6b; verify it in the re-test.
+
+   **Done (2026-11-14), awaiting the user's re-test.** What was built:
+   - 6a: `npm run measure` prints prompt sizes. Per turn in a chat with no
+     codebase: prober ~1,490 → ~970 tokens, teacher ~2,270 → ~740. The
+     per-mode rules (`modeRules` in `src/instructions.ts`) ride in the teacher's
+     `rederive_status` description and in `rederive_set_mode`'s result (for
+     mid-turn switches). Problem tools load only for the teacher once the chat
+     has a repo. Rederive: no file reads by the teacher, a two-node plan (root
+     problem → "Design decisions, one at a time"; no titles, which would list
+     upcoming problems), no plan go-ahead. `next_problem` drops evidence and
+     sends the root problem only with D1 (status carries it too).
+   - 6b: every question in a codebase chat goes through `ask_user_question`;
+     a dismissed card = pause (one line, end turn, ask again next message).
+     The host has no plan-approval step (presenting the plan ends the turn).
+   - 6c: `rederive_skip_problem`; `log_problem` rejects skip-like notes;
+     both return the next problem to open in the same turn. Rebuild carries
+     over log entries whose titles match (renumbered); the old log is copied
+     aside. "Show rederive log" top-bar action shows the log read-only.
+   - 6d: no public API posts a message or starts a turn, so "send any
+     message" stays. The action records `startPending` in `sessions.json`;
+     the teacher's status description flags it and its next status call
+     reports and clears it. The dialog prefills from a path in the unsent
+     composer text.
 7. **Routing eval.** `tests\routing-prompts.md`: ~15 prompts tagged with the
    expected mode (5 rederive, 5 onboarding, 5 normal), including tricky ones.
    User runs them in fresh sessions; tune instruction examples from failures.
@@ -378,8 +401,8 @@ storing `{ defaultMode: "ask" | "auto" | "always" | "never", defaultRepo }`.
 
 `learnharness-plugins` is required every step (see CLAUDE.md) and stays the
 authority on the plugin API. The `mattpocock-skills` plugin (installed at user
-scope) covers process. Steps 1–5 are done (step 5 was tested in-app; its
-findings are step 6).
+scope) covers process. Steps 1–6 are done (step 5 was tested in-app; its
+findings are step 6; step 6 awaits the user's re-test).
 
 | Step | Skills | What for |
 |---|---|---|

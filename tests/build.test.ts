@@ -66,8 +66,9 @@ test("backend registers the worker, tools, instructions and frontend operations"
 
   const active = () => instructions.filter((i) => i.active);
   assert.deepEqual(active().map((i) => i.agents), [["prober"], ["teacher"]]);
-  assert.match(active()[0]!.text, /Routing: pick the mode from the learner's words/);
-  assert.deepEqual([...handlers.keys()].sort(), ["get-settings", "save-settings", "start-rederive"]);
+  assert.match(active()[0]!.text, /Pick the mode from the learner's words/);
+  assert.deepEqual([...handlers.keys()].sort(), ["get-log", "get-settings", "save-settings", "start-rederive"]);
+  assert.deepEqual(await handlers.get("get-log")!({ chatId: "c" }), { repoName: null, path: null, text: "", archived: [] });
 
   // Saving settings swaps the instructions for ones that follow the new default mode.
   assert.deepEqual(await handlers.get("get-settings")!(undefined), { defaultMode: "auto", defaultRepo: "" });
@@ -90,15 +91,9 @@ test("backend registers the worker, tools, instructions and frontend operations"
   assert.equal(registrations.length, 1);
   const registration = registrations[0]!;
   assert.deepEqual(registration.agents, ["prober", "teacher"]);
+  // A chat with no repo gets only the routing tools; tools.test.ts covers the full set.
   const names = registration.create({ chatId: "chat-1", agent: "teacher" }).map((t) => t.name);
-  assert.deepEqual(names, [
-    "rederive_open_repo",
-    "rederive_set_mode",
-    "rederive_status",
-    "rederive_build_map",
-    "rederive_next_problem",
-    "rederive_log_problem",
-  ]);
+  assert.deepEqual(names, ["rederive_open_repo", "rederive_set_mode", "rederive_status", "rederive_build_map"]);
   controller.abort();
 });
 
@@ -122,11 +117,15 @@ test("frontend registers the tool cards, settings rows and the top-bar action", 
     "rederive_log_problem",
     "rederive_next_problem",
     "rederive_set_mode",
+    "rederive_skip_problem",
     "rederive_status",
   ]);
   assert.deepEqual(settingsRows.map((r) => r.key), ["defaultMode", "defaultRepo"]);
-  assert.deepEqual(actions.map((a) => [a.id, a.shortcut?.defaultBinding]), [["rederive-repo", "mod+shift+r"]]);
-  assert.deepEqual(placements.map((p) => [p.actionId, p.location, p.sessions]), [["rederive-repo", "top-bar", ["teaching"]]]);
+  assert.deepEqual(actions.map((a) => [a.id, a.shortcut?.defaultBinding]), [["rederive-repo", "mod+shift+r"], ["rederive-log", undefined]]);
+  assert.deepEqual(placements.map((p) => [p.actionId, p.location, p.sessions]), [
+    ["rederive-repo", "top-bar", ["teaching"]],
+    ["rederive-log", "top-bar", ["teaching"]],
+  ]);
 });
 
 test("frontend bundle contains no Node-only modules", () => {

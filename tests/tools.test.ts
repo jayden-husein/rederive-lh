@@ -40,9 +40,19 @@ before(() => {
 
 after(() => removeDir(workspace));
 
+/** This turn's teacher tools. The problem tools exist only once the chat has a repo. */
 function tools(chatId: string) {
-  const [openRepo, setMode, status, buildMap, nextProblem, logProblem] = createTools(deps, { chatId, agent: "teacher" });
-  return { openRepo: openRepo!, setMode: setMode!, status: status!, buildMap: buildMap!, nextProblem: nextProblem!, logProblem: logProblem! };
+  const list = createTools(deps, { chatId, agent: "teacher" });
+  const byName = (name: string) => list.find((t) => t.name === name)!;
+  return {
+    openRepo: byName("rederive_open_repo"),
+    setMode: byName("rederive_set_mode"),
+    status: byName("rederive_status"),
+    buildMap: byName("rederive_build_map"),
+    nextProblem: byName("rederive_next_problem"),
+    logProblem: byName("rederive_log_problem"),
+    skipProblem: byName("rederive_skip_problem"),
+  };
 }
 
 function context(chatId: string): PluginToolContext {
@@ -159,12 +169,17 @@ test("once a build finishes, problems run in map order and get logged", async ()
 
   const first = await t.nextProblem.execute("2", {});
   assert.deepEqual(first.details, { id: "D1", state: "loaded", revisit: false });
-  assert.match(textOf(first), /Problem D1 \(hidden from the learner/);
+  assert.match(textOf(first), /^Problem D1, for you only\./);
+  assert.match(textOf(first), /Root problem: /);
   assert.match(textOf(first), /1\. Constraint 1 -> breaks: the naive design/);
-  assert.match(textOf(first), /Decision \(the learner must reach this; never state it\): technique 1/);
+  assert.match(textOf(first), /Decision \(never state it\): technique 1/);
+  assert.doesNotMatch(textOf(first), /Evidence/);
 
   const logged = await t.logProblem.execute("3", { id: "D1", struggled: "s", foundAlone: "f", didWell: "w", didOk: "o", betterIdea: "b" });
   assert.equal(logged.details.nextProblemId, "D2");
+  // The result carries the next problem, so the agent opens it in the same turn.
+  assert.match(textOf(logged), /^D1 logged\.\nOpen the next problem now, in this turn\.\n\nProblem D2, for you only\./);
+  assert.doesNotMatch(textOf(logged), /Root problem/, "the root problem comes only with the first problem");
   const log = readFileSync(deps.maps.logFile(repoId), "utf8");
   assert.equal(log, "## D1. Problem 1\nstruggled with: s\nfound on their own: f\ndid well: w\ndid ok: o\nbetter idea: b\n");
 
@@ -179,12 +194,15 @@ test("build_map won't overwrite a map unless asked to rebuild", async () => {
   await assert.doesNotReject(Promise.resolve(buildMapDefinition(deps).prepare({ rebuild: true }, context("chat-a"))));
 });
 
-test("log_problem needs every note unless the problem was skipped", async () => {
+test("log_problem refuses notes that describe a skip, and skip_problem defers it", async () => {
   const t = tools("chat-a");
-  await assert.rejects(t.logProblem.execute("1", { id: "D2", struggled: "s" }), /Missing foundAlone, didWell, didOk.*skipped: true/);
-  const skipped = await t.logProblem.execute("2", { id: "D2", skipped: true });
+  // The first in-app test logged a skipped D1 as finished with notes like these.
+  const skipLike = { id: "D2", struggled: "Not attempted; the learner skipped.", foundAlone: "-", didWell: "-", didOk: "-" };
+  await assert.rejects(t.logProblem.execute("1", skipLike), /describe a skip.*rederive_skip_problem/);
+  await assert.rejects(t.logProblem.execute("1", { ...skipLike, struggled: " " }), /Fill in every note/);
+  const skipped = await t.skipProblem.execute("2", { id: "D2" });
   assert.deepEqual(skipped.details, { id: "D2", skipped: true, nextProblemId: "D3" });
-  assert.match(textOf(skipped), /Marked D2 as skipped.*comes back after the other problems/);
+  assert.match(textOf(skipped), /^D2 skipped; it comes back after the others\.\nOpen the next problem now, in this turn\.\n\nProblem D3, for you only/);
 });
 
 test("a skipped problem comes back, flagged, after the untouched ones", async () => {
@@ -194,7 +212,7 @@ test("a skipped problem comes back, flagged, after the untouched ones", async ()
   }
   const back = await t.nextProblem.execute("1", {});
   assert.deepEqual(back.details, { id: "D2", state: "loaded", revisit: true });
-  assert.match(textOf(back), /skipped this problem earlier/);
+  assert.match(textOf(back), /Skipped earlier: say you're coming back to it/);
   const statusText = textOf(await t.status.execute("2", {}));
   assert.match(statusText, /Next problem: D2 \(skipped earlier\)/);
   // The problem list lets the agent match a learner's "why"; titles only, with progress marks.
@@ -209,8 +227,42 @@ test("after the last problem, next_problem points to the log", async () => {
   }
   const done = await t.nextProblem.execute("1", {});
   assert.equal(done.details.state, "all-done");
-  assert.match(textOf(done), /log\.md/);
+  assert.match(textOf(done), /behind the "Show rederive log" button/);
   assert.match(textOf(await t.status.execute("2", {})), /Every problem is logged/);
+});
+
+test("problem tools are only in the teacher's loadout once the chat has a repo", () => {
+  const names = (chatId: string, agent: "prober" | "teacher") => createTools(deps, { chatId, agent }).map((t) => t.name);
+  const routing = ["rederive_open_repo", "rederive_set_mode", "rederive_status", "rederive_build_map"];
+  assert.deepEqual(names("chat-none", "teacher"), routing);
+  assert.deepEqual(names("chat-a", "prober"), routing);
+  assert.deepEqual(names("chat-a", "teacher"), [...routing, "rederive_next_problem", "rederive_log_problem", "rederive_skip_problem"]);
+});
+
+test("the teacher's status description carries the rules for the chat's mode; the prober's doesn't", async () => {
+  const describe = (chatId: string, agent: "prober" | "teacher") =>
+    createTools(deps, { chatId, agent }).find((tool) => tool.name === "rederive_status")!.description;
+  await deps.store.setMode("chat-rules", "rederive");
+  assert.match(describe("chat-rules", "teacher"), /### Rederive mode \(this chat\)/);
+  assert.doesNotMatch(describe("chat-rules", "prober"), /###/);
+  await deps.store.setMode("chat-rules", "onboarding");
+  assert.match(describe("chat-rules", "teacher"), /### Onboarding mode \(this chat\)/);
+  await deps.store.setMode("chat-rules", "normal");
+  assert.doesNotMatch(describe("chat-rules", "teacher"), /###/);
+});
+
+test("the top-bar action's restart shows in the description until one status call reports it", async () => {
+  const describe = () => createTools(deps, { chatId: "chat-a", agent: "teacher" }).find((tool) => tool.name === "rederive_status")!.description;
+  // The chat is already in rederive mode: before the fix, nothing visible changed.
+  await deps.store.setMode("chat-a", "rederive");
+  const before = describe();
+  await deps.store.requestStart("chat-a");
+  assert.notEqual(describe(), before);
+  assert.match(describe(), /the learner pressed "Rederive this repo"\. Call rederive_status now\./);
+  const status = textOf(await tools("chat-a").status.execute("1", {}));
+  assert.match(status, /^Restart requested: .*open with the root problem\./);
+  assert.equal(describe(), before);
+  assert.doesNotMatch(textOf(await tools("chat-a").status.execute("2", {})), /Restart requested/);
 });
 
 test("status's description carries the chat's saved mode and repo, read synchronously", async () => {

@@ -4,11 +4,11 @@
 // side-effect free, so it can't write map.json. Instead, whenever a tool needs the map,
 // `current()` adopts the newest succeeded build-map task for the repo (task records
 // survive restarts) and writes map.json from it once.
-import { readFile, rename } from "node:fs/promises";
+import { readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { PluginTaskSnapshot } from "learnharness-plugin-api";
 import { writeFileAtomic } from "./atomic.ts";
-import { formatLogEntry, formatSkipEntry, nextProblem as nextProblemIn, parseLog, readLog, type LogEntry, type LogProgress } from "./log.ts";
+import { carryOverLog, formatLogEntry, formatSkipEntry, nextProblem as nextProblemIn, parseLog, readLog, type LogEntry, type LogProgress } from "./log.ts";
 import { renderMapMarkdown, validateMapResult, type Decision, type DecisionMapResult, type StoredMap } from "./map.ts";
 
 export const BUILD_MAP_WORKER = "build-map";
@@ -66,7 +66,7 @@ export interface NextProblem {
   revisit: boolean;
 }
 
-export type LogResult = { decision: Decision; next: NextProblem | null; file: string };
+export type LogResult = { decision: Decision; next: NextProblem | null; file: string; map: StoredMap };
 
 function pickNext(map: StoredMap, progress: LogProgress): NextProblem | null {
   const decision = nextProblemIn(map.decisions, progress);
@@ -156,7 +156,7 @@ export class MapStore {
       const separator = existing === "" || existing.endsWith("\n\n") ? "" : existing.endsWith("\n") ? "\n" : "\n\n";
       const updated = `${existing}${separator}${section}`;
       await writeFileAtomic(file, updated);
-      return { decision, next: pickNext(map, parseLog(updated)), file };
+      return { decision, next: pickNext(map, parseLog(updated)), file, map };
     });
   }
 
@@ -177,21 +177,36 @@ export class MapStore {
       decisions: task.result.decisions,
     };
     // Any log here belongs to another map (or one whose map.json was lost): its ids
-    // no longer line up, so set it aside rather than let it mark new problems done.
-    await this.archiveLog(repoId);
-    // map.md first: map.json is what marks the adoption done, so a crash in between
-    // just repeats the adoption next time.
+    // no longer line up, so set it aside, and start the new log with the entries whose
+    // problem titles still match, renumbered.
+    // The old log is copied aside, then log.md is replaced in one atomic write, so a crash
+    // at any point leaves either the old log (and a repeat adoption) or the carried one.
+    const oldLog = await readLog(this.logFile(repoId));
+    if (oldLog) {
+      await this.archiveLog(repoId, oldLog);
+      const carried = carryOverLog(oldLog, map.decisions);
+      if (carried) await writeFileAtomic(this.logFile(repoId), carried);
+      else await rm(this.logFile(repoId), { force: true });
+    }
+    // map.json last: it marks the adoption done, so a crash before it repeats the adoption.
     await writeFileAtomic(join(repoDataDir(this.dataDirectory, repoId), "map.md"), renderMapMarkdown(map));
     await writeFileAtomic(this.mapFile(repoId), `${JSON.stringify(map, null, 2)}\n`);
     return map;
   }
 
-  private async archiveLog(repoId: string): Promise<void> {
-    const stamp = this.now().toISOString().replace(/[:.]/g, "-");
+  /** Logs set aside by earlier rebuilds, newest first (file names only). */
+  async archivedLogs(repoId: string): Promise<string[]> {
     try {
-      await rename(this.logFile(repoId), join(repoDataDir(this.dataDirectory, repoId), `log.before-${stamp}.md`));
+      const names = await readdir(repoDataDir(this.dataDirectory, repoId));
+      return names.filter((n) => /^log\.before-.*\.md$/.test(n)).sort().reverse();
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
     }
+  }
+
+  private async archiveLog(repoId: string, text: string): Promise<void> {
+    const stamp = this.now().toISOString().replace(/[:.]/g, "-");
+    await writeFileAtomic(join(repoDataDir(this.dataDirectory, repoId), `log.before-${stamp}.md`), text);
   }
 }

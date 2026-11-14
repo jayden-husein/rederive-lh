@@ -11,6 +11,7 @@ export const RENDERED_TOOLS = [
   TOOL_NAMES.buildMap,
   TOOL_NAMES.nextProblem,
   TOOL_NAMES.logProblem,
+  TOOL_NAMES.skipProblem,
 ] as const;
 
 type CardInput = Pick<PluginToolRenderProps, "toolName" | "state" | "output" | "background">;
@@ -60,7 +61,10 @@ export function cardText(tool: CardInput): string {
     }
     case TOOL_NAMES.logProblem:
       if (failed) return "Couldn't log progress";
+      // Before rederive_skip_problem existed, skips were logged here with skipped: true.
       return field(out, "skipped") === true ? "Problem skipped for now" : "Progress logged";
+    case TOOL_NAMES.skipProblem:
+      return failed ? "Couldn't skip the problem" : "Problem skipped for now";
     default:
       return "Rederive";
   }

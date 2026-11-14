@@ -23,6 +23,11 @@ export interface RepoRecord {
 export interface ChatRecord {
   mode?: Mode;
   repoId?: string;
+  /**
+   * Set when the learner pressed "Rederive this repo": the agent should restart with the
+   * chat's repo. Cleared by the next rederive_status call.
+   */
+  startPending?: string;
   updatedAt: string;
 }
 
@@ -46,6 +51,14 @@ function isSessionsFile(value: unknown): value is SessionsFile {
 export interface ChatState {
   mode: Mode | null;
   repo: RepoRecord | null;
+  /** When the top-bar action asked for a restart that no status call has seen yet. */
+  startPending: string | null;
+}
+
+function chatState(data: SessionsFile, chatId: string): ChatState {
+  const chat = data.chats[chatId];
+  const repo = chat?.repoId ? data.repos[chat.repoId] ?? null : null;
+  return { mode: chat?.mode ?? null, repo: repo ? { ...repo } : null, startPending: chat?.startPending ?? null };
 }
 
 export class SessionStore {
@@ -113,24 +126,41 @@ export class SessionStore {
    * Null before `warm` has finished; the cache follows every write made through this store.
    */
   peekChat(chatId: string): ChatState | null {
-    if (!this.cache) return null;
-    const chat = this.cache.chats[chatId];
-    const repo = chat?.repoId ? this.cache.repos[chat.repoId] ?? null : null;
-    return { mode: chat?.mode ?? null, repo: repo ? { ...repo } : null };
+    return this.cache ? chatState(this.cache, chatId) : null;
   }
 
   async getChat(chatId: string): Promise<ChatState> {
-    return this.serialize(async () => {
-      const data = await this.load();
-      const chat = data.chats[chatId];
-      const repo = chat?.repoId ? data.repos[chat.repoId] ?? null : null;
-      return { mode: chat?.mode ?? null, repo: repo ? { ...repo } : null };
-    });
+    return this.serialize(async () => chatState(await this.load(), chatId));
   }
 
   async setMode(chatId: string, mode: Mode): Promise<void> {
     await this.mutate((data) => {
       data.chats[chatId] = { ...data.chats[chatId], mode, updatedAt: this.now().toISOString() };
+    });
+  }
+
+  /** The top-bar action: switch to rederive and ask the agent to restart with the chat's repo. */
+  async requestStart(chatId: string): Promise<void> {
+    await this.mutate((data) => {
+      const stamp = this.now().toISOString();
+      data.chats[chatId] = { ...data.chats[chatId], mode: "rederive", startPending: stamp, updatedAt: stamp };
+    });
+  }
+
+  /**
+   * Read the chat's state and clear a pending start in one step, so a restart is reported
+   * to exactly one status call. Writes only when something was pending.
+   */
+  async takeChat(chatId: string): Promise<ChatState> {
+    return this.serialize(async () => {
+      const current = await this.load();
+      const state = chatState(current, chatId);
+      if (!state.startPending) return state;
+      const next = structuredClone(current);
+      delete next.chats[chatId]!.startPending;
+      await writeFileAtomic(this.file, `${JSON.stringify(next, null, 2)}\n`);
+      this.cache = next;
+      return state;
     });
   }
 
