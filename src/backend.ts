@@ -2,7 +2,7 @@
 import type { PluginBackendContext } from "learnharness-plugin-api";
 import { proberInstructions, teacherInstructions } from "./instructions.ts";
 import { MapStore } from "./map-store.ts";
-import { MAX_SOURCE_CHARS, OPERATIONS, type LogView, type StartRederiveResult } from "./names.ts";
+import { MAX_SOURCE_CHARS, OPERATIONS, type LogView, type PendingStart, type StartRederiveResult } from "./names.ts";
 import { readLog } from "./log.ts";
 import { SessionStore } from "./sessions.ts";
 import { SettingsStore, type Settings } from "./settings.ts";
@@ -78,14 +78,26 @@ export async function activate(ctx: PluginBackendContext): Promise<void> {
     return saved;
   });
 
-  // Top-bar action: open the repo, switch this chat to rederive and flag a restart. It
-  // posts no message; on the next turn rederive_status's description tells the agent to
-  // check status, which reports the restart once and clears the flag.
+  // Top-bar action: open the repo, switch this chat to rederive and flag a restart. The
+  // frontend puts a note in front of the next message; rederive_status also reports it.
   ctx.handle(OPERATIONS.startRederive, async (input): Promise<StartRederiveResult> => {
     const { chatId, source } = parseStartRederive(input);
     const opened = await openRepoForChat(deps, chatId, source, ctx.signal);
     await store.requestStart(chatId);
     return { repoName: opened.details.repo.name, warning: opened.details.warning ?? null };
+  });
+
+  // The restart note: the frontend asks before each message in a teaching chat and
+  // clears the start once the message carrying the note is accepted.
+  ctx.handle(OPERATIONS.pendingStart, async (input): Promise<PendingStart | null> => {
+    const state = await store.getChat(parseChatId(input));
+    return state.startPending && state.repo ? { repoName: state.repo.name, stamp: state.startPending } : null;
+  });
+  ctx.handle(OPERATIONS.clearStart, async (input) => {
+    const stamp = asRecord(input).stamp;
+    if (typeof stamp !== "string") throw new Error("A stamp is required.");
+    await store.clearStart(parseChatId(input), stamp);
+    return null;
   });
 
   // "Show rederive log": this chat's log, read-only. Adopting a finished map first means

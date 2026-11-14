@@ -392,6 +392,24 @@ storing `{ defaultMode: "ask" | "auto" | "always" | "never", defaultRepo }`.
      the teacher's status description flags it and its next status call
      reports and clears it. The dialog prefills from a path in the unsent
      composer text.
+
+   **Re-test 1 (2026-11-14) and fixes.** Prefill, skip and the question
+   cards worked. Fixed, with the user's decisions:
+   - A new chat reused the old map silently. Now `rederive_open_repo` reports a
+     map left by an earlier chat and the prober asks once (card): continue, or
+     start fresh. Fresh = `rederive_build_map({ rebuild: true })`, which now
+     starts an empty log (old one kept aside); `keepProgress: true` carries
+     matching titles over.
+   - The button's restart was ignored (the tutor never called status). Now a
+     submission interceptor puts a visible note, "(Rederive this repo: start
+     fresh with <repo>.)", in front of the next message in that chat; both
+     agents' instructions treat it as "rebuild fresh, open with the root
+     problem". The backend's `startPending` is cleared when that message is
+     accepted. Restart = start fresh.
+   - Closing a card ends the tutor's turn in the host, so it can't say
+     "paused". Closing now means "I'll reply in the chat box": the next
+     message is the answer; "skip" skips; "go" re-asks as a card.
+   - The log dialog wraps long paths.
 7. **Routing eval.** `tests\routing-prompts.md`: ~15 prompts tagged with the
    expected mode (5 rederive, 5 onboarding, 5 normal), including tricky ones.
    User runs them in fresh sessions; tune instruction examples from failures.

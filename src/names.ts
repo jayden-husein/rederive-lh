@@ -14,6 +14,13 @@ export const TOOL_NAMES = {
 /** The top-bar action that shows the log; the agent points the learner to it by name. */
 export const LOG_ACTION_NAME = "Show rederive log";
 
+/** The "Rederive this repo" button puts this, then the repo name and ".)", in front of the next message. */
+export const RESTART_NOTE_PREFIX = "(Rederive this repo: start fresh with";
+
+export function restartNote(repoName: string): string {
+  return `${RESTART_NOTE_PREFIX} ${repoName}.)`;
+}
+
 /** Longest repo path or URL accepted from settings or the top-bar action. */
 export const MAX_SOURCE_CHARS = 1000;
 
@@ -29,7 +36,16 @@ export const OPERATIONS = {
   saveSettings: "save-settings",
   startRederive: "start-rederive",
   getLog: "get-log",
+  pendingStart: "pending-start",
+  clearStart: "clear-start",
 } as const;
+
+/** A button press whose restart note has not reached the agent yet. */
+export interface PendingStart {
+  repoName: string;
+  /** When the button was pressed; clearing checks it so a newer press survives. */
+  stamp: string;
+}
 
 /** What the get-log operation returns to the "Show rederive log" dialog. */
 export interface LogView {

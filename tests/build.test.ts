@@ -67,8 +67,10 @@ test("backend registers the worker, tools, instructions and frontend operations"
   const active = () => instructions.filter((i) => i.active);
   assert.deepEqual(active().map((i) => i.agents), [["prober"], ["teacher"]]);
   assert.match(active()[0]!.text, /Pick the mode from the learner's words/);
-  assert.deepEqual([...handlers.keys()].sort(), ["get-log", "get-settings", "save-settings", "start-rederive"]);
+  assert.deepEqual([...handlers.keys()].sort(), ["clear-start", "get-log", "get-settings", "pending-start", "save-settings", "start-rederive"]);
   assert.deepEqual(await handlers.get("get-log")!({ chatId: "c" }), { repoName: null, path: null, text: "", archived: [] });
+  assert.equal(await handlers.get("pending-start")!({ chatId: "c" }), null);
+  await assert.rejects(Promise.resolve(handlers.get("clear-start")!({ chatId: "c" })), /stamp is required/);
 
   // Saving settings swaps the instructions for ones that follow the new default mode.
   assert.deepEqual(await handlers.get("get-settings")!(undefined), { defaultMode: "auto", defaultRepo: "" });
@@ -103,15 +105,18 @@ test("frontend registers the tool cards, settings rows and the top-bar action", 
   const actions: { id: string; shortcut?: { defaultBinding?: string } }[] = [];
   const placements: { actionId: string; location: string; sessions?: string[] }[] = [];
   let settingsRows: { key: string }[] = [];
+  const interceptors: { id: string }[] = [];
   frontend.activate({
     signal: new AbortController().signal,
     registerToolRenderer: (r: { toolName: string }) => (renderers.push(r.toolName), () => {}),
     registerAction: (a: any) => (actions.push(a), () => {}),
     placeAction: (p: any) => (placements.push(p), () => {}),
     registerSettings: (s: { rows: { key: string }[] }) => ((settingsRows = s.rows), { update: () => {}, dispose: () => {} }),
+    registerSubmissionInterceptor: (i: { id: string }) => (interceptors.push(i), () => {}),
     call: async () => ({ defaultMode: "auto", defaultRepo: "" }),
     onResync: () => () => {},
   });
+  assert.deepEqual(interceptors.map((i) => i.id), ["rederive-restart-note"]);
   assert.deepEqual(renderers.sort(), [
     "rederive_build_map",
     "rederive_log_problem",
@@ -126,6 +131,53 @@ test("frontend registers the tool cards, settings rows and the top-bar action", 
     ["rederive-repo", "top-bar", ["teaching"]],
     ["rederive-log", "top-bar", ["teaching"]],
   ]);
+});
+
+test("after the button, the next teaching message gets the restart note, cleared once accepted", async () => {
+  const frontend = await import(pathToFileURL(join(dist, "main.js")).href);
+  let interceptor: any;
+  const calls: [string, any][] = [];
+  let pending: object | null = { repoName: "dali-challenge", stamp: "s1" };
+  let failLookup = false;
+  frontend.activate({
+    signal: new AbortController().signal,
+    registerToolRenderer: () => () => {},
+    registerAction: () => () => {},
+    placeAction: () => () => {},
+    registerSettings: () => ({ update: () => {}, dispose: () => {} }),
+    registerSubmissionInterceptor: (i: any) => ((interceptor = i), () => {}),
+    call: async (name: string, input: any) => {
+      calls.push([name, input]);
+      if (name === "pending-start") {
+        if (failLookup) throw new Error("backend down");
+        return pending;
+      }
+      return name === "get-settings" ? { defaultMode: "auto", defaultRepo: "" } : null;
+    },
+    onResync: () => () => {},
+  });
+  const accepted: (() => unknown)[] = [];
+  const context = (sessionKind = "teaching") => ({
+    sessionId: "chat-1",
+    sessionKind,
+    signal: new AbortController().signal,
+    onAccepted: (cb: () => unknown) => accepted.push(cb),
+  });
+  const message = { type: "text", content: { text: "start", images: [] } };
+
+  const out = await interceptor.intercept(message, context());
+  assert.equal(out.content.text, "(Rederive this repo: start fresh with dali-challenge.)\n\nstart");
+  assert.equal(calls.some(([n]) => n === "clear-start"), false, "not cleared before acceptance");
+  await accepted[0]!();
+  assert.deepEqual(calls.at(-1), ["clear-start", { chatId: "chat-1", stamp: "s1" }]);
+
+  // Practice chats, other submission types, no pending start, or a failed lookup: unchanged.
+  assert.equal(await interceptor.intercept(message, context("practice")), undefined);
+  assert.equal(await interceptor.intercept({ type: "answer" }, context()), undefined);
+  pending = null;
+  assert.equal(await interceptor.intercept(message, context()), undefined);
+  failLookup = true;
+  assert.equal(await interceptor.intercept(message, context()), undefined);
 });
 
 test("frontend bundle contains no Node-only modules", () => {

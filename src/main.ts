@@ -4,7 +4,7 @@
 import type { PluginActionContext, PluginFrontendContext, PluginSettingsRow, PluginWidgetHandle } from "learnharness-plugin-api";
 import { cardText, RENDERED_TOOLS } from "./cards.ts";
 import { sourceFromDraft } from "./draft.ts";
-import { LOG_ACTION_NAME, MAX_SOURCE_CHARS, OPERATIONS, type LogView, type StartRederiveResult } from "./names.ts";
+import { LOG_ACTION_NAME, MAX_SOURCE_CHARS, OPERATIONS, restartNote, type LogView, type PendingStart, type StartRederiveResult } from "./names.ts";
 // Type-only: settings.ts is Node code and must stay out of the browser bundle.
 import type { DefaultMode, Settings } from "./settings.ts";
 
@@ -159,7 +159,7 @@ function openStartDialog(ctx: PluginFrontendContext, chatId: string, initialSour
                 done = true;
                 // There is no public API to post a chat message, so the learner sends one.
                 status.textContent =
-                  `Rederive mode is on for "${result.repoName}". Send any message to start; the tutor builds the decision map first.` +
+                  `Rederive mode is on for "${result.repoName}". Send any message to start fresh: a note is added in front of it, and the tutor builds a new decision map.` +
                   (result.warning ? ` (${result.warning})` : "");
                 start.update({ label: "Close", disabled: false });
                 cancel.dispose();
@@ -212,8 +212,10 @@ function openLogDialog(ctx: PluginFrontendContext, chatId: string): void {
         const heading = doc.createElement("h2");
         heading.textContent = "Rederive log";
         const where = doc.createElement("p");
+        // Long Windows paths have no spaces to break at.
+        where.style.overflowWrap = "anywhere";
         const body = doc.createElement("pre");
-        body.style.cssText = "white-space:pre-wrap;max-height:60vh;overflow:auto;margin:0";
+        body.style.cssText = "white-space:pre-wrap;overflow-wrap:anywhere;max-height:60vh;overflow:auto;margin:0";
         const buttons = doc.createElement("div");
         buttons.style.cssText = "display:flex;gap:8px;justify-content:flex-end;margin-top:8px";
         const copySlot = doc.createElement("div");
@@ -281,10 +283,33 @@ function registerLogAction(ctx: PluginFrontendContext): void {
   ctx.placeAction({ id: "rederive-log-top-bar", actionId: "rederive-log", location: "top-bar", sessions: ["teaching"] });
 }
 
+/**
+ * After "Rederive this repo", put a short visible note in front of the learner's next
+ * message in that chat, so the agent can't miss the restart (a note in a tool description
+ * was ignored in testing). The backend holds the pending start, so it survives a reload;
+ * it is cleared only once the message is accepted.
+ */
+function registerRestartNote(ctx: PluginFrontendContext): void {
+  ctx.registerSubmissionInterceptor({
+    id: "rederive-restart-note",
+    async intercept(input, context) {
+      if (input.type !== "text" || context.sessionKind !== "teaching") return undefined;
+      const chatId = context.sessionId;
+      // A failed lookup must never block the learner's message: send it unchanged.
+      const pending = await ctx.call<PendingStart | null>(OPERATIONS.pendingStart, { chatId }).catch(() => null);
+      if (!pending || context.signal.aborted) return undefined;
+      context.onAccepted(() => ctx.call(OPERATIONS.clearStart, { chatId, stamp: pending.stamp }).then(() => undefined));
+      const text = input.content.text.trim() ? `${restartNote(pending.repoName)}\n\n${input.content.text}` : restartNote(pending.repoName);
+      return { type: "text", content: { ...input.content, text } };
+    },
+  });
+}
+
 export function activate(ctx: PluginFrontendContext): void {
   const settings = { current: { ...PLACEHOLDER_SETTINGS } };
   registerCards(ctx);
   registerSettingsRows(ctx, settings);
   registerStartAction(ctx, settings);
   registerLogAction(ctx);
+  registerRestartNote(ctx);
 }

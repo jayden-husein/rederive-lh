@@ -55,7 +55,19 @@ test("a newer build replaces the map and sets the old log aside", async () => {
   assert.equal((await store.archivedLogs("r1")).length, 1);
 });
 
-test("a rebuild carries over entries whose problem titles still match, renumbered", async () => {
+test("a fresh rebuild starts an empty log and keeps the old one aside", async () => {
+  const tasks = [succeededTask("t1", "r1", "2026-11-14T10:00:00.000Z")];
+  const { store } = storeWith(tasks, "fresh");
+  await store.current("r1");
+  await store.logProblem("r1", "D1", { struggled: "s", foundAlone: "f", didWell: "w", didOk: "o" });
+  tasks.push(succeededTask("t2", "r1", "2026-11-14T11:00:00.000Z"));
+  await store.current("r1");
+  assert.equal(existsSync(store.logFile("r1")), false);
+  assert.equal((await store.progress("r1")).done.size, 0);
+  assert.equal((await store.archivedLogs("r1")).length, 1);
+});
+
+test("a rebuild with keepProgress carries over entries whose problem titles still match, renumbered", async () => {
   const tasks = [succeededTask("t1", "r1", "2026-11-14T10:00:00.000Z")];
   const { data, store } = storeWith(tasks, "carry");
   await store.current("r1");
@@ -67,7 +79,9 @@ test("a rebuild carries over entries whose problem titles still match, renumbere
   rebuilt.decisions[0]!.title = "problem 3"; // case and spacing don't matter
   rebuilt.decisions[1]!.title = "Problem  4";
   rebuilt.decisions[2]!.title = "Something new";
-  tasks.push(succeededTask("t2", "r1", "2026-11-14T11:00:00.000Z", rebuilt));
+  const t2 = succeededTask("t2", "r1", "2026-11-14T11:00:00.000Z", rebuilt);
+  (t2.input as { keepProgress?: boolean }).keepProgress = true;
+  tasks.push(t2);
   await store.current("r1");
   assert.equal(
     readFileSync(store.logFile("r1"), "utf8"),

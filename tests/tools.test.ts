@@ -191,7 +191,19 @@ test("once a build finishes, problems run in map order and get logged", async ()
 
 test("build_map won't overwrite a map unless asked to rebuild", async () => {
   await assert.rejects(Promise.resolve(buildMapDefinition(deps).prepare({}, context("chat-a"))), /already has a map/);
-  await assert.doesNotReject(Promise.resolve(buildMapDefinition(deps).prepare({ rebuild: true }, context("chat-a"))));
+  const fresh = await buildMapDefinition(deps).prepare({ rebuild: true }, context("chat-a"));
+  assert.equal((fresh.input as { keepProgress?: boolean }).keepProgress, undefined, "a rebuild is a fresh start by default");
+  const kept = await buildMapDefinition(deps).prepare({ rebuild: true, keepProgress: true }, context("chat-a"));
+  assert.equal((kept.input as { keepProgress?: boolean }).keepProgress, true);
+});
+
+test("a new chat opening a repo with an earlier chat's map is told to ask continue-or-fresh", async () => {
+  const again = await tools("chat-new").openRepo.execute("1", { source: repo });
+  assert.equal(again.details.earlierMap?.logged, 1);
+  assert.match(textOf(again), /An earlier chat already built a decision map.*continue where they left off, or start fresh/);
+  // Reopening the same repo in the same chat doesn't ask again.
+  const same = await tools("chat-new").openRepo.execute("2", { source: repo });
+  assert.equal(same.details.earlierMap, undefined);
 });
 
 test("log_problem refuses notes that describe a skip, and skip_problem defers it", async () => {

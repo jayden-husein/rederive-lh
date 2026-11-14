@@ -19,6 +19,8 @@ export interface BuildMapInput {
   repoName: string;
   repoPath: string;
   builtFrom: string | null;
+  /** Carry matching log entries over to the new map instead of starting an empty log. */
+  keepProgress?: boolean;
 }
 
 export type TaskLister = () => PluginTaskSnapshot[];
@@ -176,15 +178,15 @@ export class MapStore {
       rootProblem: task.result.rootProblem,
       decisions: task.result.decisions,
     };
-    // Any log here belongs to another map (or one whose map.json was lost): its ids
-    // no longer line up, so set it aside, and start the new log with the entries whose
-    // problem titles still match, renumbered.
+    // Any log here belongs to another map (or one whose map.json was lost): its ids no
+    // longer line up, so set it aside. A fresh start begins an empty log; keepProgress
+    // starts it with the entries whose problem titles still match, renumbered.
     // The old log is copied aside, then log.md is replaced in one atomic write, so a crash
-    // at any point leaves either the old log (and a repeat adoption) or the carried one.
+    // at any point leaves either the old log (and a repeat adoption) or the new one.
     const oldLog = await readLog(this.logFile(repoId));
     if (oldLog) {
       await this.archiveLog(repoId, oldLog);
-      const carried = carryOverLog(oldLog, map.decisions);
+      const carried = input.keepProgress ? carryOverLog(oldLog, map.decisions) : "";
       if (carried) await writeFileAtomic(this.logFile(repoId), carried);
       else await rm(this.logFile(repoId), { force: true });
     }

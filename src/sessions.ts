@@ -155,13 +155,28 @@ export class SessionStore {
     return this.serialize(async () => {
       const current = await this.load();
       const state = chatState(current, chatId);
-      if (!state.startPending) return state;
-      const next = structuredClone(current);
-      delete next.chats[chatId]!.startPending;
-      await writeFileAtomic(this.file, `${JSON.stringify(next, null, 2)}\n`);
-      this.cache = next;
+      if (state.startPending) await this.writeWithoutStart(current, chatId);
       return state;
     });
+  }
+
+  /**
+   * Clear the pending start once the restart note reached the agent, unless the button
+   * was pressed again since (`stamp` no longer matches).
+   */
+  async clearStart(chatId: string, stamp: string): Promise<void> {
+    await this.serialize(async () => {
+      const current = await this.load();
+      if (current.chats[chatId]?.startPending === stamp) await this.writeWithoutStart(current, chatId);
+    });
+  }
+
+  /** Caller must hold the queue. */
+  private async writeWithoutStart(current: SessionsFile, chatId: string): Promise<void> {
+    const next = structuredClone(current);
+    delete next.chats[chatId]!.startPending;
+    await writeFileAtomic(this.file, `${JSON.stringify(next, null, 2)}\n`);
+    this.cache = next;
   }
 
   /** Register (or refresh) a repo and make it this chat's current repo. */

@@ -37,17 +37,27 @@ test("the prober decides the mode before asking for a repo, and normal mode asks
   assert.match(text, /"switch modes"/);
 });
 
-test("every question goes through the question card, and a dismissed card pauses", () => {
+test("every question goes through the question card; a closed card means the reply comes in the chat box", () => {
   // The teacher carries it in every codebase chat, so the routing question from normal mode is a card too.
   for (const text of [proberInstructions(base), teacherInstructions(base)]) {
     assert.match(text, /Ask every question to the learner with ask_user_question, one per message, never as plain text/);
-    assert.match(text, /dismissed, the learner paused.*end your turn; on their next message, ask the same question again/);
+    assert.match(text, /dismissed means the learner will reply in the chat box: their next message is the answer/);
+    assert.match(text, /If it says skip, skip the problem/);
   }
+});
+
+test("both agents start fresh on the button's restart note; the prober then hands off", () => {
+  assert.match(proberInstructions(base), /starting with "\(Rederive this repo: start fresh with <repo>\.\)".*rebuild: true, then hand off/);
+  assert.match(teacherInstructions(base), /starting with "\(Rederive this repo: start fresh with <repo>\.\)".*rebuild: true, then open with the root problem/);
+});
+
+test("the prober asks continue-or-fresh when an earlier chat left a map", () => {
+  assert.match(proberInstructions(base), /reports a map from an earlier chat, ask its continue-or-fresh question/);
 });
 
 test("the always-on teacher text is short and points to rederive_status for the rules", () => {
   const text = teacherInstructions(base);
-  assert.ok(text.length < 1000, `teacher instructions are ${text.length} chars`);
+  assert.ok(text.length < 1400, `teacher instructions are ${text.length} chars`);
   assert.match(text, /when its description says the saved state changed/);
   assert.match(text, /its description carries this chat's teaching rules/);
   assert.doesNotMatch(text, /Why did you build this/);

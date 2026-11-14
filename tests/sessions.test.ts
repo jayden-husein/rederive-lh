@@ -30,6 +30,18 @@ test("a start request sets rederive and is reported to exactly one takeChat", as
   assert.equal((await new SessionStore(data).getChat("chat-s")).startPending, null);
 });
 
+test("clearStart clears only the press it was given, so a newer press survives", async () => {
+  let now = "2026-11-14T08:00:00.000Z";
+  const store = new SessionStore(data, () => new Date(now));
+  await store.requestStart("chat-s");
+  now = "2026-11-14T08:05:00.000Z";
+  await store.requestStart("chat-s");
+  await store.clearStart("chat-s", "2026-11-14T08:00:00.000Z");
+  assert.equal((await store.getChat("chat-s")).startPending, "2026-11-14T08:05:00.000Z");
+  await store.clearStart("chat-s", "2026-11-14T08:05:00.000Z");
+  assert.equal((await store.getChat("chat-s")).startPending, null);
+});
+
 test("a fresh store reports nothing and creates no file", async () => {
   const store = new SessionStore(data);
   assert.deepEqual(await store.getChat("chat-1"), empty);
