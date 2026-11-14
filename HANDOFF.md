@@ -415,6 +415,17 @@ storing `{ defaultMode: "ask" | "auto" | "always" | "never", defaultRepo }`.
 7. **Routing eval.** `tests\routing-prompts.md`: ~15 prompts tagged with the
    expected mode (5 rederive, 5 onboarding, 5 normal), including tricky ones.
    User runs them in fresh sessions; tune instruction examples from failures.
+
+   **Built (2026-11-14).** `tests\routing-prompts.md` holds the 15 prompts
+   (R1–R5, O1–O5, N1–N5) with the reply to give if the routing question comes,
+   an "Ask ok" flag for the one prompt whose goal is open to both readings
+   (O5), and why each is tricky. `npm run routing-report` scores the runs
+   from the chat transcripts (read-only): newest chat per prompt, matched by
+   its first message; mode = first successful `rederive_set_mode` (none =
+   normal); asking the routing question before it fails a row unless "Ask ok".
+   Logic in `scripts\routing-eval.ts`, tested in `tests\routing-eval.test.ts`.
+   Next: the user runs the 15 prompts; then tune the examples in `MODES` /
+   `routing()` in `src\instructions.ts` from the failures and re-run those.
 8. **README.** What it does, install, modes, screenshots placeholder, credits.
 
 ### Skills to use per step
@@ -422,7 +433,8 @@ storing `{ defaultMode: "ask" | "auto" | "always" | "never", defaultRepo }`.
 `learnharness-plugins` is required every step (see CLAUDE.md) and stays the
 authority on the plugin API. The `mattpocock-skills` plugin (installed at user
 scope) covers process. Steps 1–6 are done (step 5 was tested in-app; its
-findings are step 6; step 6 passed its re-test). Next: step 7.
+findings are step 6; step 6 passed its re-test). Step 7's prompt set and
+report are built; next: the user runs them, then tune from failures.
 
 | Step | Skills | What for |
 |---|---|---|
