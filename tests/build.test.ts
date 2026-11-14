@@ -38,24 +38,22 @@ test("frontend bundle is an ES module exporting activate", () => {
   assert.match(source, /export\s*\{[^}]*\bactivate\b/);
 });
 
-test("backend registers a working echo tool for prober and teacher", async () => {
+test("backend registers the rederive tools for prober and teacher", () => {
   const backend = createRequire(import.meta.url)(join(dist, "backend.cjs"));
   assert.equal(typeof backend.activate, "function");
 
   const registrations: { agents: string[]; create: (c: object) => any[] }[] = [];
   const controller = new AbortController();
-  backend.activate({ signal: controller.signal, registerTools: (r: any) => registrations.push(r) });
+  backend.activate({
+    signal: controller.signal,
+    dataDirectory: join(dist, "unused-data"),
+    registerTools: (r: any) => registrations.push(r),
+  });
 
   assert.equal(registrations.length, 1);
   const registration = registrations[0]!;
   assert.deepEqual(registration.agents, ["prober", "teacher"]);
-
-  const [tool] = registration.create({ chatId: "chat-1", agent: "teacher" });
-  assert.equal(tool.name, "rederive_echo");
-  const result = await tool.execute("call-1", { text: "hello" }, new AbortController().signal);
-  assert.deepEqual(result.content, [{ type: "text", text: "Rederive echo: hello" }]);
-  assert.deepEqual(result.details, { text: "hello", chatId: "chat-1", agent: "teacher" });
-
+  const names = registration.create({ chatId: "chat-1", agent: "teacher" }).map((t) => t.name);
+  assert.deepEqual(names, ["rederive_open_repo", "rederive_set_mode", "rederive_status"]);
   controller.abort();
-  await assert.rejects(tool.execute("call-2", { text: "x" }), /cancelled/);
 });
