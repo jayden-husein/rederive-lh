@@ -444,8 +444,12 @@ storing `{ defaultMode: "ask" | "auto" | "always" | "never", defaultRepo }`.
    answers away. Fixed: the ownership check is now in the prober's repo step
    (answer goes in probe_done; the teacher uses it), and prober step 6 names
    no design problems or decisions. Prober instructions grew ~90 tokens.
-   Not yet checked in the app: re-run R2; expect the ownership card after
-   the repo opens and no design problem named before the teacher's turn.
+   R2 re-run 2 (chat_mwg65rqn): the ownership card came right after the
+   repo opened, before the mode was set. The chat stopped at the
+   continue-or-fresh card, so the handoff (no design problem named) and the
+   teacher's opening are still unchecked. Seen: after "group project, I
+   wrote some", the prober promised "we'll keep track of which parts you
+   wrote", which nothing in the plugin does.
 8. **README.** What it does, install, modes, screenshots placeholder, credits.
 
 ### Skills to use per step
