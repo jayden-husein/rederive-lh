@@ -296,16 +296,90 @@ storing `{ defaultMode: "ask" | "auto" | "always" | "never", defaultRepo }`.
    Skipping is already decided and built: `rederive_log_problem({ skipped: true })`
    writes `## D<n>. <title>\nskipped`, and the problem comes back after the
    untouched ones. The teacher instructions should use it when the learner skips.
-6. **Routing eval.** `tests\routing-prompts.md`: ~15 prompts tagged with the
+6. **Fixes from the step 5 in-app test.** The user tested step 5 on 2026-11-14.
+   Fix these five issues, then **user re-runs a full session** (both repos) and
+   the button in a chat that is already in rederive mode. The evidence below comes
+   from the transcript `data\chats\chat_mwg28vih_aaba154c.json` (dali-challenge,
+   read-only learning data) and the plugin's own `data\`. Re-read it with a
+   script rather than opening it whole.
+
+   **6a. Startup uses too many tokens.** Measured: the host's own prompt is
+   ~14k tokens on prober turns and ~27k on teacher turns. The plugin adds ~600
+   (prober instructions) + ~1,350 (teacher instructions) + ~860 (tool schemas)
+   on *every* turn of *every* chat, including chats with no codebase. The bigger
+   waste is in the teacher's plan phase: it re-read README, an ADR and
+   `schema.sql` with its own file tools (~7k chars) and wrote its own plan
+   (`plan_init`) of the same decisions the map worker had already found.
+   `rederive_next_problem` returns ~2.2k chars per problem. Fix ideas, measure
+   before and after with the same script:
+   - In rederive mode the teacher reads no repo files before the map arrives (the
+     worker does that); `plan_init` gets a minimal plan: the root problem and
+     one node per map problem, by title only.
+   - Shorten the always-on instruction text. Move the detailed rederive rules
+     to where they are needed (for example the `rederive_status` or
+     `rederive_next_problem` result in rederive mode), so non-codebase chats
+     carry only a short routing paragraph. Check against the skill whether
+     anything per-turn can depend on the chat (tool descriptions can;
+     instructions can't).
+   - Trim `next_problem` output and the log tool's long parameter descriptions.
+
+   **6b. Questions must use the host's question card.** The host already has
+   `ask_user_question` (the agent used it for some questions). Some went out as
+   plain prose instead, e.g. after the map arrived: "...the plan beside this
+   message hasn't changed. Once you confirm it... Does the plan work for you,
+   or do you want changes?" (sent with `send_to_user`, no card). Rule for both
+   prober and teacher: every question to the learner, including plan
+   confirmation, the routing question and each rederive question, goes through
+   `ask_user_question`, one per message. Check the skill for whether the host
+   has a native plan-approval step the teacher should use instead of asking.
+   Also handle a dismissed card (`{"dismissed":true}`): seen in the transcript
+   at the first rederive question; decide with the user what dismiss means
+   (skip? pause?).
+
+   **6c. Skipping doesn't advance, and log.md "is missing".** Found:
+   - The cs50final archived log shows the agent logged a skipped D1 as a
+     *finished* problem with notes "Not attempted... skipped", instead of
+     `skipped: true`, so D1 counts as done and never comes back. Make skipping
+     unmistakable: e.g. a separate `rederive_skip_problem({ id })` tool (or
+     reject notes when they describe a skip), and have the skip/log result load
+     or point straight to the next problem so the agent moves on in the same turn.
+   - There is no `log.md` because rebuilding the cs50final map (07:16) moved the
+     old log aside as `log.before-<stamp>.md`, as designed. It also lives in the
+     plugin's `data\repos\<id>\`, not in the learner's repo, which the user didn't
+     expect. Decide with the user: where the log should be visible (path in the
+     status/next-problem output? an action that opens it?) and whether a rebuild
+     should carry over entries whose problem titles still match.
+
+   **6d. The top-bar button.**
+   - Attach a folder with the composer's attach-files/folders control instead of
+     typing a path. Check whether the session view (`context.view`, the
+     unsent draft and attachments) exposes attached folder paths; if so,
+     prefill the dialog (or skip it) from the attachment. Paths only, never
+     file contents.
+   - "Should go automatically after": the action can't post a message (no
+     send API). Investigate a submission interceptor or another public hook
+     that can start the session; if none exists, say so and keep "send any
+     message".
+   - In a chat already in rederive mode nothing happens: the saved-state line
+     doesn't change, so the agent doesn't re-check status or build a map for the
+     new repo. Fix: the action records a pending "start" (e.g. a `startedAt`
+     stamp in `sessions.json`) that `savedStateLine` shows until the agent's next
+     `rederive_status` call clears it, and the teacher instructions treat it as
+     "restart with this repo: build the map if needed, open with the root problem".
+
+   **6e. Routing question as a card.** Routing worked, but the routing
+   question was prose. Covered by 6b; verify it in the re-test.
+7. **Routing eval.** `tests\routing-prompts.md`: ~15 prompts tagged with the
    expected mode (5 rederive, 5 onboarding, 5 normal), including tricky ones.
    User runs them in fresh sessions; tune instruction examples from failures.
-7. **README.** What it does, install, modes, screenshots placeholder, credits.
+8. **README.** What it does, install, modes, screenshots placeholder, credits.
 
 ### Skills to use per step
 
 `learnharness-plugins` is required every step (see CLAUDE.md) and stays the
 authority on the plugin API. The `mattpocock-skills` plugin (installed at user
-scope) covers process. Steps 1–4 are done; step 5 is built and waiting for the user's in-app test.
+scope) covers process. Steps 1–5 are done (step 5 was tested in-app; its
+findings are step 6).
 
 | Step | Skills | What for |
 |---|---|---|
@@ -313,8 +387,11 @@ scope) covers process. Steps 1–4 are done; step 5 is built and waiting for the
 | | `mattpocock-skills:prototype` | Before wiring the worker, try the worker prompt on the cs50final summary (`npm run summary`) to check the decisions it picks look right. |
 | 5. Instructions + UI | `mattpocock-skills:grilling` | First, before writing anything: settle routing/teaching behavior and the §9 open questions with the user. |
 | | `mattpocock-skills:writing-for-agents` | Writing the prober/teacher instruction text and the worker instructions. |
-| 6. Routing eval | `mattpocock-skills:writing-for-agents` | Tuning instruction examples from routing failures. |
-| 7. README | none | Plain writing; `mattpocock-skills:pr` only if the work goes through a PR. |
+| 6. Test fixes | `mattpocock-skills:grilling` | First: settle the open product questions in 6b (dismissed card), 6c (log location, carry-over on rebuild) and 6d (auto-start) with the user. |
+| | `mattpocock-skills:diagnosing-bugs` | Each issue: reproduce from the transcript or a test before fixing. |
+| | `mattpocock-skills:writing-for-agents` | Shortening and relocating the instruction text (6a, 6b). |
+| 7. Routing eval | `mattpocock-skills:writing-for-agents` | Tuning instruction examples from routing failures. |
+| 8. README | none | Plain writing; `mattpocock-skills:pr` only if the work goes through a PR. |
 | Any step | `mattpocock-skills:diagnosing-bugs` | When an in-app test by the user fails or something throws. |
 | End of every step | `mattpocock-skills:code-review` | Review changes since the previous step's commit against this file (Spec) and the repo's conventions (Standards) before stopping for user testing. |
 
