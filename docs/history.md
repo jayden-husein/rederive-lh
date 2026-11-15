@@ -1,4 +1,4 @@
-# Build history (steps 1–7)
+# Build history (steps 1–9)
 
 What each finished step asked for, the in-app test findings and how they were
 fixed, moved out of HANDOFF.md §7. Read it when a step refers to earlier findings.
@@ -294,6 +294,122 @@ Git history has the code.
    mode; O1 got the ownership card because "joining the team" contradicts the
    git guess (100% the learner's email), as the conflict rule says.
 
+9. **Graded rederive card.** Asked for by the user (2026-11-14) after R2 re-run
+   3: rederive answers should show whether they hold up, like normal mode's
+   quiz, without revealing the hidden decision. Built as plugin teaching
+   questions (`registerQuestionType` teach variant + `gradeAnswer`,
+   `registerQuestionRenderer` + `mountAnswered`). Decided with the user
+   (2026-11-15), before the in-app tests below changed some of it:
+   - Every design answer on a problem is graded. Option picks from the map,
+     no model call; free text by the cheap model inside `gradeAnswer` (Submit
+     waits, 20 s deadline).
+   - The card shows Holds up / Partly / Breaks plus the constraint it fails, as
+     map text; never the decision, its technique or an unseen constraint.
+   - Holds up means it survives the problem and the constraints given so far,
+     not that it matches the repo.
+   - The answer key stays in the backend: the card carries the problem id, how
+     many constraints were given and the option letters/texts; `gradeAnswer`
+     reads map.json through `chatId`; the grading prompt has no decision.
+   - Map options gain `real` and `failsAt` (0 = the bare problem); maps without
+     them grade picks with the model; options reach the teacher lettered in a
+     shuffled, stable order.
+   - Posed as `type: "check"` on the decisions plan node, so results count.
+   - Grading failure saves the answer, the card says "Not graded", the teacher
+     judges it.
+   Code: `src\design-card.ts` (shared names, shapes and what the
+   answered card shows), `src\grading.ts` (schemas, validation, `gradeAnswer`:
+   option picks from the map's `real`/`failsAt`, free text and unmarked maps by
+   the cheap model under a 20 s raced deadline), `src\design-view.ts` (option
+   radios or a text box; answered view with the badge in the host header and the
+   constraint line under the answer). The map schema gained `real`/`failsAt`
+   (validated; old maps load unmarked); `letteredOptions` shuffles options by a
+   stable hash, used by both `formatProblemForAgent` and grading. Teacher rules
+   (`DESIGN_CARD` in `modeRules`, an exception note in the always-on text) send
+   design questions to `rederive_ask_design` and everything else to
+   `ask_user_question`.
+   Review fixes: a pick whose card text reads more like another map option than
+   its own letter's is not graded (relabelled card); the deadline is a race, not
+   only an abort signal; the own-part "how does your code handle it" question
+   stays `ask_user_question`; `constraintsGiven` counts a constraint added in the
+   same message.
+   Left open for the in-app test: whether `type: "check"` adds a read-first
+   reveal step to the card (the contract ties reading thinking to checks);
+   whether the teacher finds the decisions node id; with options on the card the
+   learner can't type their own better idea there (they can dismiss the card and
+   reply in the chat box); a chat mid-problem on a pre-step-9 map sees options
+   re-lettered.
+   First in-app test (chat_mwi71vdx, 2026-11-15): free-text cards posed and
+   graded (partly / breaks with "Doesn't solve the problem yet"), leak-check
+   clean apart from common words. Fixed after it: no options card (the teacher
+   wrote its own numbered rules in chat and asked "1, 2 or 3?" on a free-text
+   card; step 5 and the tool description now put the problem's lettered options
+   on the card); no thinking box (now `showThinking: true`, the host box with
+   dictation, as on native quizzes; dictation goes there, not into the design
+   box); card styling looked off (now `src\styles.css` with host theme tokens,
+   option rows, host Markdown for option texts and saved answers); the Mermaid
+   sketch likely failed to parse (a dotted edge labelled "youtube.com/...";
+   the sketch rule now gives flowchart syntax: letter ids, quoted labels,
+   `-->|"label"|`, no dotted edges). Radio groups are named per mount.
+   A pick whose reworded text shares more words with another option comes back
+   "Not graded": watch for false alarms.
+   Then, with the user: no host thinking box after all (a second box next to a
+   free-text design is confusing). `showThinking: false`; dictation goes to the
+   editor's `appendTranscript`: the design box, or for picks an optional
+   "Why?" box (`why` in the answer, shown and sent to the teacher, not graded).
+   Second in-app test (chat_mwi7zr0l, dali-challenge): the teacher used the
+   options card with the problem's letters; the dictated why came through. The
+   user wanted the native quiz thinking box on picks, not a lookalike. The
+   native quiz card itself doesn't fit: it grades right/wrong against a
+   `correctAnswer` in the call and shows the teacher's explanation (see
+   `question-core.d.ts`). So, decided with the user: two card types.
+   `rederive_ask_design` (free text, `showThinking: false`, dictation into the
+   box) and `rederive_ask_pick` (`rederive-pick`, options required,
+   `showThinking: true`, the host thinking box takes reasoning and dictation;
+   no "Why?" box). Validation and grading are shared and accept both shapes, so
+   design cards saved with options still work; old `why` answers still show.
+   Third in-app test (same chat, continued): the sketch and a concept diagram
+   parse (checked with Mermaid 11.12; the app bundles 11.17.0) but looked off:
+   edge labels render as unframed grey boxes unlike the nodes, two were long and
+   identical, and the sketch had a loose node and "???" labels. The user wants
+   edge labels kept but styled, so every diagram now starts with
+   `MERMAID_STYLE_LINE` (`src\instructions.ts`): a Mermaid init directive whose
+   `themeCSS` frames edge labels like small boxes (1px `--border` outline,
+   padding, rounded, `--background` fill, `--muted-foreground` text). Picked
+   from three variants rendered in the browser pane with Mermaid 11.12 at
+   securityLevel strict; the directive passes there. Not yet seen in the app.
+   Also: one to three words per label, no repeated labels, every node
+   connected, no "???", explanation in the message; concept-gap diagrams follow
+   it too.
+   Fourth in-app test (same chat, to D2): the pick card (thinking box, graded
+   "holds up so far"), the native quiz for a concept check and the style line
+   all worked; the user's screenshot shows framed edge labels. Wrong: after
+   several "idk"s the learner typed "show me a graph" and the teacher drew D1's
+   whole design, named "authentication middleware with tenant scoping", said
+   "you rederived it" and logged D1 as finished. Rule 8 now: "show me" gets a
+   sketch with the gap or a skip first; only if they still want the answer is
+   it explained as normal teaching, never called rederived, and logged with
+   foundAlone "nothing: the design was explained".
+   Fifth in-app test (same chat, D2): sketch with the gap first, skip and plain
+   explanation offered, design explained without "you rederived it", log notes
+   honest. But the teacher's own continue-card offered "Show me a graph of the
+   finished design", and the log wording was its own. Now: rule 8 forbids
+   offering the finished design as an option; `rederive_log_problem` takes
+   `explained: true`, which adds the fixed line "how: explained to them, not
+   derived" to the entry (still counted as done).
+   Sixth in-app test (same chat, D3 to D4): the continue-card offered plain
+   explanation, keep going or stop, never the answer; D3 was logged with
+   `explained: true` and honest notes; picks used the pick card, concept checks
+   the native quiz. Deviation: on D3 a guessed pick of the real option ("idk"
+   thinking) held up before any constraint and the teacher named the technique
+   and wrapped up. The "holds up so far" rule now says a pick that holds up is
+   not the finish: ask why if the thinking doesn't say, keep adding
+   constraints, name the technique only after the last one.
+
+   **Step 9 is done (2026-11-15).** Dictation didn't finish on submit on a concept check: that card is
+   the host's `ask_user_question`, outside the plugin. Decided with the user:
+   concept checks go on the native quiz (`type: "check"`), which finishes
+   dictation as normal quizzes do.
+
 ## Skills used per step
 
 | Step | Skills | What for |
@@ -308,3 +424,6 @@ Git history has the code.
 | 7. Routing eval | `mattpocock-skills:writing-for-agents` | Tuning instruction examples from routing failures. |
 | 8. Authorship | `mattpocock-skills:grilling` | Settled how "needs" is known, the tool shape and shared problems with the user; later dropped prerequisite runs after R2. |
 | | `mattpocock-skills:code-review` | Standards and spec review before the first in-app test. |
+| 9. Graded card | `mattpocock-skills:grilling` | Settled which answers are graded, what the card shows, where the key lives, graph, failure handling. |
+| | `mattpocock-skills:tdd` | Map marks, lettering, grading from the map and the model, answer-key leak checks, instruction text. |
+| | `mattpocock-skills:code-review` | Found the card-letter/map mismatch, the soft deadline and the own-part scope creep; fixed. |

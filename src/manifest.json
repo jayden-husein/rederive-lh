@@ -6,5 +6,6 @@
   "minAppVersion": "0.6.1",
   "description": "Learn a codebase by re-deriving its design decisions, with normal teaching when a concept is missing.",
   "main": "main.js",
-  "backend": "backend.cjs"
+  "backend": "backend.cjs",
+  "styles": "styles.css"
 }

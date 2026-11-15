@@ -10,6 +10,10 @@ export const TOOL_NAMES = {
   nextProblem: "rederive_next_problem",
   logProblem: "rederive_log_problem",
   skipProblem: "rederive_skip_problem",
+  /** The graded design card's teach tool: a host-built question tool, not one of ours to execute. */
+  askDesign: "rederive_ask_design",
+  /** The graded pick card's teach tool, also host-built. */
+  askPick: "rederive_ask_pick",
 } as const;
 
 /** The top-bar action that shows the log; the agent points the learner to it by name. */

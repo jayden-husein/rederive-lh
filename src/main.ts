@@ -3,6 +3,7 @@
 // "Rederive this repo" top-bar action.
 import type { PluginActionContext, PluginFrontendContext, PluginSettingsRow, PluginWidgetHandle } from "learnharness-plugin-api";
 import { cardText, RENDERED_TOOLS } from "./cards.ts";
+import { registerDesignCards } from "./design-view.ts";
 import { sourceFromDraft } from "./draft.ts";
 import { LOG_ACTION_NAME, MAX_SOURCE_CHARS, OPERATIONS, restartNote, type LogView, type PendingStart, type StartRederiveResult } from "./names.ts";
 // Type-only: settings.ts is Node code and must stay out of the browser bundle.
@@ -308,6 +309,7 @@ function registerRestartNote(ctx: PluginFrontendContext): void {
 export function activate(ctx: PluginFrontendContext): void {
   const settings = { current: { ...PLACEHOLDER_SETTINGS } };
   registerCards(ctx);
+  registerDesignCards(ctx);
   registerSettingsRows(ctx, settings);
   registerStartAction(ctx, settings);
   registerLogAction(ctx);

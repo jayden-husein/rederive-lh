@@ -20,6 +20,13 @@ test("an entry uses rederive's log format and omits an empty better idea", () =>
   assert.match(formatLogEntry({ id: "D1", title: "t" }, { ...entry, betterIdea: "a trie" }), /better idea: a trie\n$/);
 });
 
+test("an explained problem gets a fixed line, and still counts as done", () => {
+  const text = formatLogEntry({ id: "D2", title: "t" }, { ...entry, explained: true });
+  assert.match(text, /\nhow: explained to them, not derived\n$/);
+  assert.doesNotMatch(formatLogEntry({ id: "D2", title: "t" }, { ...entry, explained: false }), /how:/);
+  assert.equal(parseLog(text).done.has("D2"), true);
+});
+
 test("a skip is one heading plus the word skipped", () => {
   assert.equal(formatSkipEntry({ id: "D1", title: "Find pages fast" }), "## D1. Find pages fast\nskipped\n");
 });

@@ -62,3 +62,44 @@ test("the worker must give files, but maps built before them still load", () => 
   }
   assert.doesNotThrow(() => validateMapResult(old));
 });
+
+test("each decision marks exactly one real option, and every other option says where it fails", () => {
+  const noReal = sampleMapResult(5);
+  noReal.decisions[1]!.options[0]!.real = false;
+  assert.throws(() => validateMapResult(noReal), /D2 must mark exactly one option real: true/);
+
+  const twoReal = sampleMapResult(5);
+  twoReal.decisions[1]!.options[1]!.real = true;
+  assert.throws(() => validateMapResult(twoReal), /D2 must mark exactly one option real: true/);
+
+  const noFailsAt = sampleMapResult(5) as { decisions: { options: Record<string, unknown>[] }[] };
+  delete noFailsAt.decisions[2]!.options[1]!.failsAt;
+  assert.throws(() => validateMapResult(noFailsAt), /D3 option 2 is not real, so it needs failsAt/);
+
+  const pastEnd = sampleMapResult(5);
+  pastEnd.decisions[2]!.options[1]!.failsAt = 2; // only one constraint
+  assert.throws(() => validateMapResult(pastEnd), /D3 option 2 has failsAt 2, but D3 has 1 constraint/);
+
+  const bareProblem = sampleMapResult(5);
+  bareProblem.decisions[2]!.options[1]!.failsAt = 0;
+  assert.doesNotThrow(() => validateMapResult(bareProblem));
+});
+
+test("the worker must mark options, but maps built before step 9 still load", () => {
+  const unmarked = sampleMapResult(5) as { decisions: { options: Record<string, unknown>[] }[] };
+  for (const d of unmarked.decisions) for (const o of d.options) {
+    delete o.real;
+    delete o.failsAt;
+  }
+  assert.equal(Value.Check(DecisionMapResultSchema, unmarked), false);
+  assert.doesNotThrow(() => validateMapResult(unmarked));
+});
+
+test("map.md marks the real option and where the others fail", () => {
+  const map: StoredMap = {
+    version: 1, repoName: "tiny-search", builtFrom: null, builtAt: "2026-11-14T10:00:00.000Z", taskId: "t",
+    ...sampleMapResult(5),
+  };
+  const md = renderMapMarkdown(map);
+  assert.match(md, / {2}- real approach: good \(real\)\n {2}- other approach: worse \(fails at constraint 1\)/);
+});

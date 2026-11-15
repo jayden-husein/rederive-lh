@@ -1,0 +1,53 @@
+/* The graded cards (design and pick). Host theme tokens only, so it follows the learner's theme. */
+.rederive-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  color: var(--foreground, inherit);
+  font-family: var(--font-prose, var(--font-ui, inherit));
+  font-size: var(--lh-prose-size, inherit);
+  line-height: var(--lh-prose-leading, inherit);
+  min-width: 0;
+}
+
+.rederive-card .rederive-markdown { min-width: 0; overflow-wrap: anywhere; }
+.rederive-card .rederive-markdown > :first-child { margin-top: 0; }
+.rederive-card .rederive-markdown > :last-child { margin-bottom: 0; }
+
+/* Free-text design: the same frame as a native answer field. */
+.rederive-card .rederive-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 6.5em;
+  resize: vertical;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border, #8886);
+  border-radius: 0.5rem;
+  background: var(--background, transparent);
+  color: inherit;
+  font: inherit;
+}
+.rederive-card .rederive-input::placeholder { color: var(--muted-foreground, #888); }
+.rederive-card .rederive-input:focus-visible { outline: 1px solid var(--ring, var(--muted-foreground, #888)); outline-offset: 0; }
+.rederive-card .rederive-input[readonly] { opacity: 0.7; }
+
+/* Option picks: one bordered row per option, the letter in front. */
+.rederive-card .rederive-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border, #8886);
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+.rederive-card .rederive-option:hover { background: var(--muted, #8881); }
+.rederive-card .rederive-option:has(input:checked) { border-color: var(--foreground, currentColor); background: var(--muted, #8881); }
+.rederive-card .rederive-option:has(input:focus-visible) { outline: 1px solid var(--ring, var(--muted-foreground, #888)); }
+.rederive-card .rederive-option:has(input:disabled) { cursor: default; opacity: 0.7; }
+.rederive-card .rederive-option input { margin: 0.3em 0 0; accent-color: var(--primary, currentColor); flex: none; }
+.rederive-card .rederive-letter { font-weight: 600; flex: none; }
+
+/* Answered card: the constraint line under the answer. */
+.rederive-card .rederive-detail { color: var(--muted-foreground, #888); margin: 0; overflow-wrap: anywhere; }

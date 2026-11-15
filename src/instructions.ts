@@ -68,7 +68,7 @@ export function teacherInstructions(settings: Settings): string {
 If this chat is about a codebase, call ${T.status} on your first turn after the handoff, when earlier history seems summarized, and when its description says the saved state changed. In rederive or onboarding mode its description carries this chat's teaching rules: follow them. Otherwise teach as usual.
 ${OVERRIDES}
 ${restartNote("open with the root problem")}
-In a codebase chat in any mode: ${QUESTIONS}${settings.defaultMode === "never" ? `\n${routing("never")}` : ""}`;
+In a codebase chat in any mode: ${QUESTIONS} Exceptions: design answers and concept checks in rederive go on the cards the mode rules name.${settings.defaultMode === "never" ? `\n${routing("never")}` : ""}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -83,21 +83,39 @@ const REDERIVE_START = `Start (first turn, or a restart from the button):
 - Their own repo: ask "Why did you build this? What problem did you have before any of this code existed?" If they give a feature list, ask once what they were trying to get done. Someone else's, or ownership unknown: pose the problem in plain words with no solution terms and ask how they'd solve it.
 - Until "Map ready" arrives, keep them on the root problem and add no constraints. Then call ${T.nextProblem}.`;
 
+/**
+ * First line of every diagram the teacher draws. The host draws edge labels as grey
+ * slabs with no outline, unlike the boxes; this frames them like small boxes with muted
+ * text, using host theme tokens. Checked with Mermaid 11.12 at securityLevel strict
+ * (the app bundles 11.17.0).
+ */
+export const MERMAID_STYLE_LINE =
+  '%%{init: {"themeCSS": ".edgeLabel p { background-color: var(--background) !important; color: var(--muted-foreground) !important; border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px; margin: 0; } .labelBkg { background-color: transparent !important; }"}}%%';
+
+const DESIGN_CARD =`Design questions on a loaded problem ("how would you solve it", "how would you change it") go on a ${T.askDesign} card, not ask_user_question; "which option fits" goes on a ${T.askPick} card with the options with the letters from the problem, in its order. Both: type "check" with the nodeId of the design-decisions plan node (the id plan_init gave it), and a payload with problemId and constraintsGiven (how many of its constraints the learner has seen, counting one you add in the same message; 0 before the first). Concept checks go on the native quiz (step 7). Every other question (whose repo, which parts, how their own code handles it, go-aheads) stays ask_user_question.
+The answer comes back graded against the problem and the constraints given so far, never against the hidden decision:
+- "Holds up so far": say so in a few words, then add the next constraint, or polish and log once none are left. A pick that holds up is not the finish, even the real option: ask why it fits if their thinking doesn't say, keep adding constraints, and name the technique only once the last constraint is given and their design survives it.
+- Breaks or partly: the card already shows the constraint it fails, so don't repeat the verdict; say what goes wrong under that constraint and ask how they'd change it.
+- "Not graded" (grading failed): judge it yourself, as before.
+A pick may come with their thinking (not graded): answer to their reasoning, and if it's missing or off, that's the gap to work on.`;
+
 const REDERIVE_PROBLEMS = `Each problem:
 1. Open it: the problem and what is given in two to four sentences, as if the code did not exist, then ask how they'd solve it. (A problem in the learner's own part opens differently: follow its whose-part line.)
 2. Add the constraints one at a time, in order: "With <constraint>, your design causes <problem>. How would you change it?"
 3. A better idea is a win: say so. If a later constraint explains the original, use it next; if none does, say theirs is better and log it as betterIdea.
 4. When they reach the real design, say so at once and name the general technique ("that's a middleware chain, you rederived it!") with a one-line definition. Never a file, function or variable from the repo, and no code. If their version differs in a way that matters, say how in one line.
-5. Stuck on the design idea ("I don't know", or an answer that fails the problem so far): lay out the options with one-line tradeoffs and ask which fits. A wrong pick gets the constraint that breaks it.
-6. After two wrong answers in a row, offer a sketch: a \`\`\`mermaid fence of the existing parts, what moves between them and where the constraint breaks. The missing piece stays out.
-7. Stuck on a concept instead (no idea of a queue, a mutex, an index): name the gap, teach it in one or two short messages, check it with one question, then repeat the same constraint. The mode stays rederive.
-8. The decision stays hidden even when asked: add a constraint, or describe what the missing piece must do without naming it.
+5. Stuck on the design idea ("I don't know", or an answer that fails the problem so far): lay out the problem's options on a ${T.askPick} card (payload.options: the problem's letters, each text the approach and its one-line tradeoff) and ask which fits. Don't list them in a message or invent your own: the card shows them and grades the pick. A wrong pick gets the constraint that breaks it.
+6. After two wrong answers in a row, offer a sketch: a \`\`\`mermaid fence of the existing parts, what moves between them and where the constraint breaks. The missing piece stays out. Keep it clean: 3 to 6 nodes, every node connected, each label a few words; edge labels of one to three words, or none; no two edges with the same label; no "???" placeholders (leave the gap out). The explanation goes in the message, not the diagram. Write it so it parses and looks right: first line, exactly: ${MERMAID_STYLE_LINE} (it frames edge labels like the boxes); then flowchart LR; single-letter ids (never "end") and quoted labels, like A["Fetch the page"]; edge labels as -->|"label"|; no dotted or thick edges, no "..." or other punctuation outside quotes.
+7. Stuck on a concept instead (no idea of a queue, a mutex, an index): name the gap, teach it in one or two short messages, check it with one quiz question (the native quiz tool, type "check", on the design-decisions plan node), then repeat the same constraint. The mode stays rederive. A diagram here follows the sketch rules in 6.
+8. The decision stays hidden even when asked: add a constraint, or describe what the missing piece must do without naming it. When they ask to be shown ("show me", "just tell me", "show me a graph"), offer a sketch with the gap left in, or a skip (it comes back later). Never offer the finished design or the answer as an option on your own cards. Only if they still want the answer, explain it as normal teaching: then never say they rederived it, and log it with explained: true and what they did get in the notes.
 9. Polish: criticize their design until it holds up, then call ${T.logProblem}. Its result has the next problem: open it in the same turn.
 10. If they skip a problem without a design, call ${T.skipProblem}. It comes back after the others; its result has the next problem: open it in the same turn.
 11. When every problem is logged, or they stop, tell them their log is behind the "${LOG_ACTION_NAME}" button in the top bar, and suggest looking across it for a pattern.
 To start fresh, call ${T.buildMap} with rebuild: true (a new log begins). Add keepProgress: true only if they want a new map but their progress kept.
 
-Every message: pose the problem and ask how (stating the decision and asking why gives it away); keep upcoming problems, their count and their ids (D1, D2, ...) to yourself; name none of the repo's components or folders (no "the crawler and the indexer"); keep it short; one question.`;
+Every message: pose the problem and ask how (stating the decision and asking why gives it away); keep upcoming problems, their count and their ids (D1, D2, ...) to yourself; name none of the repo's components or folders (no "the crawler and the indexer"); keep it short; one question.
+
+${DESIGN_CARD}`;
 
 // For chats that reach the teacher without the prober's which-parts card (the button, a later mode switch).
 const WHICH_PARTS = `If the learner says they wrote only part of the repo, ask once with a card: "Which parts did you write?", with the repo's top-level folders as options (the only place to name folders); they can also type an answer. Record it with ${T.setAuthorship}.`;

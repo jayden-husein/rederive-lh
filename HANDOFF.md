@@ -272,12 +272,19 @@ storing `{ defaultMode: "ask" | "auto" | "always" | "never", defaultRepo }`.
   and save through `ctx.call`.
 - Action "Rederive this repo", shortcut `mod+shift+r`, placed in the top bar for
   `sessions: ["teaching"]`.
+- Step 9: `registerQuestionRenderer` for the graded design card
+  (`src\design-view.ts`), two card types: the design card (`rederive_ask_design`,
+  one text box, no host thinking box, so dictation goes into the box) and the
+  pick card (`rederive_ask_pick`, the problem's lettered options, with the host
+  thinking box and its dictation). Both share the answered view with the
+  verdict badge. `src\styles.css` styles it with
+  host theme tokens.
 
 ### Manifest
 
 `apiVersion: 1`, `id: "rederive-lh"`, `name: "Rederive"`, `version: "0.1.0"`,
 `minAppVersion`: the version in the skill's `bundle.json`, `main: "main.js"`,
-`backend: "backend.cjs"`.
+`backend: "backend.cjs"`, `styles: "styles.css"` (from step 9).
 
 ---
 
@@ -297,7 +304,7 @@ storing `{ defaultMode: "ask" | "auto" | "always" | "never", defaultRepo }`.
 
 ## 7. Build order (one step per session; stop for user testing after each)
 
-Steps 1–8 are done. What each asked for, the in-app findings and their fixes
+Steps 1–9 are done. What each asked for, the in-app findings and their fixes
 are in `docs\history.md`: read it when a step refers to earlier findings.
 
 1. **Scaffold.**
@@ -308,37 +315,20 @@ are in `docs\history.md`: read it when a step refers to earlier findings.
 6. **Fixes from the step 5 in-app test.**
 7. **Routing eval.** `tests\routing-prompts.md`, `npm run routing-report`; 15/15.
 8. **Authorship.** Group projects: own parts first, tagged theirs / partner's / shared.
-9. **Graded rederive card.** Asked for by the user (2026-11-14) after R2 re-run 3:
-   rederive answers should show whether they hold up, like normal mode's quiz,
-   without revealing the hidden decision. Use a plugin teaching question
-   (`ctx.registerQuestionType` with `teach` variant + `gradeAnswer`, and
-   `registerQuestionRenderer` with `mountAnswered` for the result; see the
-   skill's `docs\plugin-question-contract.md`). Facts from the contract: the
-   teach tool takes `{type: "predict" | "check", nodeId, question, payload}`
-   (nodeId must be a live plan node: the two-node plan has "decisions");
-   `gradeAnswer` runs before save, returns any JSON, reaches `mountAnswered` and
-   the model; the host adds no LLM pass or badge UI; a grading error still saves
-   the answer. Decide with the user first (`mattpocock-skills:grilling`):
-   which questions use it (option picks only, graded from an answer key in the
-   payload, or free-text designs too, graded by the cheap model inside
-   `gradeAnswer` if that's allowed: check); what the result shows (holds up /
-   partly / breaks, plus the constraint that breaks it, never the decision);
-   where the answer key lives and whether it's visible in the card's input;
-   whether results should count in the knowledge graph; how it fits the "every
-   question is an `ask_user_question` card" rule.
+9. **Graded rederive cards.** Design card (free text) and pick card (options,
+   native thinking box), graded holds up / partly / breaks without revealing the
+   decision; concept checks on the native quiz; styled diagrams; "show me" rules.
 10. **README.** What it does, install, modes, screenshots placeholder, credits.
 
 ### Skills to use per step
 
 `learnharness-plugins` is required every step (see CLAUDE.md) and stays the
 authority on the plugin API. The `mattpocock-skills` plugin (installed at user
-scope) covers process. Next: step 9 (graded card). Rows for finished steps
+scope) covers process. Next: step 10 (README). Rows for finished steps
 are in `docs\history.md`.
 
 | Step | Skills | What for |
 |---|---|---|
-| 9. Graded card | `mattpocock-skills:grilling` | First: the open questions in step 9, with the user. |
-| | `mattpocock-skills:tdd` | Schemas, grading, the answer key staying out of learner-visible text. |
 | 10. README | none | Plain writing; `mattpocock-skills:pr` only if the work goes through a PR. |
 | Any step | `mattpocock-skills:diagnosing-bugs` | When an in-app test by the user fails or something throws. |
 | End of every step | `mattpocock-skills:code-review` | Review changes since the previous step's commit against this file (Spec) and the repo's conventions (Standards) before stopping for user testing. When `src\` is unchanged (only tests, scripts, docs or eval data), review inline instead of with two subagents. |
@@ -386,6 +376,9 @@ are in `docs\history.md`.
 - Step 6 (details in `docs\history.md`):
   - Every question in a codebase chat is an `ask_user_question` card. A closed
     card means "I'll reply in the chat box": the next message is the answer.
+    Changed in step 9: design answers go on the plugin's graded cards, and
+    concept checks on the native quiz (it finishes dictation on submit;
+    `ask_user_question` doesn't).
   - A map left by an earlier chat: the prober asks once, continue or start
     fresh. Fresh starts an empty log (old one kept aside); `keepProgress`
     carries entries with matching titles over.

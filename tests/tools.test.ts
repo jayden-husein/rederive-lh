@@ -177,13 +177,15 @@ test("once a build finishes, problems run in map order and get logged", async ()
   assert.match(textOf(first), /Decision \(never state it\): technique 1/);
   assert.doesNotMatch(textOf(first), /Evidence/);
 
-  const logged = await t.logProblem.execute("3", { id: "D1", struggled: "s", foundAlone: "f", didWell: "w", didOk: "o", betterIdea: "b" });
+  // explained: a design the teacher had to explain is logged as such, whatever the notes say.
+  const logged = await t.logProblem.execute("3", { id: "D1", struggled: "s", foundAlone: "f", didWell: "w", didOk: "o", betterIdea: "b", explained: true });
   assert.equal(logged.details.nextProblemId, "D2");
   // The result carries the next problem, so the agent opens it in the same turn.
   assert.match(textOf(logged), /^D1 logged\.\nOpen the next problem now, in this turn\.\n\nProblem D2, for you only\./);
   assert.doesNotMatch(textOf(logged), /Root problem/, "the root problem comes only with the first problem");
   const log = readFileSync(deps.maps.logFile(repoId), "utf8");
-  assert.equal(log, "## D1. Problem 1\nstruggled with: s\nfound on their own: f\ndid well: w\ndid ok: o\nbetter idea: b\n");
+  assert.equal(log, "## D1. Problem 1\nstruggled with: s\nfound on their own: f\ndid well: w\ndid ok: o\nbetter idea: b\nhow: explained to them, not derived\n");
+  assert.match(t.logProblem.description, /explained: true/);
 
   assert.equal((await t.nextProblem.execute("4", {})).details.id, "D2");
   assert.equal((await t.nextProblem.execute("5", { id: "D4" })).details.id, "D4");

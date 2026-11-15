@@ -78,8 +78,8 @@ export function sampleMapResult(count = 5) {
       constraints: [{ text: `Constraint ${i + 1}`, breaks: "the naive design" }],
       decision: { technique: `technique ${i + 1}`, definition: "A definition.", inThisCode: "index.c does it." },
       options: [
-        { approach: "real approach", tradeoff: "good" },
-        { approach: "other approach", tradeoff: "worse" },
+        { approach: "real approach", tradeoff: "good", real: true },
+        { approach: "other approach", tradeoff: "worse", real: false, failsAt: 1 },
       ],
       files: ["index.c"],
       evidence: "code only",

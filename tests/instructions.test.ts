@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { modeRules, proberInstructions, teacherInstructions } from "../src/instructions.ts";
+import { MERMAID_STYLE_LINE, modeRules, proberInstructions, teacherInstructions } from "../src/instructions.ts";
 import { TOOL_NAMES } from "../src/names.ts";
 import { DEFAULT_MODES, type Settings } from "../src/settings.ts";
 import { WORKER_INSTRUCTIONS } from "../src/worker.ts";
@@ -154,5 +154,93 @@ test("without recorded parts, the teacher can still ask which parts", () => {
   for (const mode of ["rederive", "onboarding"] as const) {
     assert.match(modeRules(mode), /wrote only part of the repo.*"Which parts did you write\?".*rederive_set_authorship/);
     assert.doesNotMatch(modeRules(mode, { partial: true }), /If the learner says they wrote only part of the repo/);
+  }
+});
+
+test("design answers on a problem go on the graded card; every other question stays ask_user_question", () => {
+  for (const text of [modeRules("rederive"), modeRules("onboarding")]) {
+    assert.match(text, /Design questions on a loaded problem .* rederive_ask_design/);
+    assert.match(text, /"which option fits" .* rederive_ask_pick card .* options with the letters from the problem/);
+    assert.match(text, /type "check".*design-decisions plan node/);
+    assert.match(text, /constraintsGiven/);
+    assert.match(text, /Every other question .* ask_user_question/);
+    assert.match(text, /their thinking/);
+  }
+  // The prober never poses design problems, so it never sees the cards.
+  assert.doesNotMatch(proberInstructions(base), /rederive_ask_(design|pick)/);
+});
+
+test("the teacher acts on the grade without repeating it or revealing the decision", () => {
+  const text = modeRules("rederive");
+  assert.match(text, /"Holds up so far".*next constraint/);
+  assert.match(text, /Breaks or partly.*how they'd change it/);
+  assert.match(text, /don't repeat the verdict/);
+  assert.match(text, /"Not graded".*judge it yourself/);
+});
+
+test("when stuck, the problem's own options go on the card, not in a chat message", () => {
+  const text = modeRules("rederive");
+  assert.match(text, /lay out the problem's options on a rederive_ask_pick card/);
+  assert.match(text, /Don't list them in a message or invent your own/);
+});
+
+test("the sketch rule keeps diagrams clean: short distinct labels, nothing loose, words in the message", () => {
+  const text = modeRules("rederive");
+  assert.match(text, /edge labels of one to three words, or none/);
+  assert.match(text, /no two edges with the same label/);
+  assert.match(text, /every node connected/);
+  assert.match(text, /no "\?\?\?" placeholders/);
+  assert.match(text, /explanation goes in the message, not the diagram/);
+  assert.match(text, /Stuck on a concept.*A diagram here follows the sketch rules in 6/);
+});
+
+test("every diagram starts with the style line that frames edge labels like the boxes", () => {
+  const text = modeRules("rederive");
+  assert.ok(text.includes(MERMAID_STYLE_LINE), "the rule quotes the line verbatim");
+  assert.match(text, /first line, exactly/);
+  // The directive must be valid Mermaid init JSON, or Mermaid ignores or rejects it.
+  const json = /^%%\{init: (.*)\}%%$/.exec(MERMAID_STYLE_LINE)![1]!;
+  const config = JSON.parse(json) as { themeCSS: string };
+  // Host tokens only, so it follows the learner's theme (checked with Mermaid 11.12, strict).
+  assert.match(config.themeCSS, /\.edgeLabel p \{[^}]*border: 1px solid var\(--border\)/);
+  assert.match(config.themeCSS, /background-color: var\(--background\)/);
+  assert.doesNotMatch(config.themeCSS, /#[0-9a-f]{3,6}/i);
+});
+
+test("the sketch rule gives Mermaid syntax that parses", () => {
+  const text = modeRules("rederive");
+  assert.match(text, /flowchart LR/);
+  assert.match(text, /A\["Fetch the page"\]/);
+  assert.match(text, /-->\|"label"\|/);
+  assert.match(text, /no dotted or thick edges/);
+});
+
+test("concept checks go on the native quiz card, which finishes dictation on submit", () => {
+  for (const text of [modeRules("rederive"), modeRules("onboarding")]) {
+    assert.match(text, /Stuck on a concept.*check it with one quiz question \(the native quiz tool, type "check", on the design-decisions plan node\)/);
+    assert.doesNotMatch(text, /concept checks, go-aheads\) stays ask_user_question/);
+  }
+});
+
+test("'show me' gets a sketch with the gap or a skip first; an explained design is logged as explained", () => {
+  // Fourth test: "show me a graph" made the teacher draw the whole design, say "you
+  // rederived it" and log the problem as finished.
+  for (const text of [modeRules("rederive"), modeRules("onboarding")]) {
+    assert.match(text, /"show me", "just tell me"/);
+    assert.match(text, /a sketch with the gap left in, or a skip/);
+    assert.match(text, /Only if they still want the answer, explain it as normal teaching/);
+    assert.match(text, /never say they rederived it/);
+    assert.match(text, /log it with explained: true/);
+    // Fifth test: the teacher's own continue-card offered "Show me a graph of the finished design".
+    assert.match(text, /Never offer the finished design or the answer as an option on your own cards/);
+  }
+});
+
+test("a pick that holds up is not the finish: the remaining constraints come first", () => {
+  // Sixth test: a guessed pick of the real option (thinking "idk") held up before any
+  // constraint, and the teacher named the technique and wrapped up at once.
+  for (const text of [modeRules("rederive"), modeRules("onboarding")]) {
+    assert.match(text, /A pick that holds up is not the finish/);
+    assert.match(text, /name the technique only once the last constraint is given and their design survives it/);
   }
 });

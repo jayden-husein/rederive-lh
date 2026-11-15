@@ -9,7 +9,8 @@ import { isRepoRelative, normalizePart, PART_LABELS, tagDecision, type PartTag }
 import { GitError, isGitWorkTree, runGit } from "./git.ts";
 import { summarizeRepo } from "./history.ts";
 import type { LogEntry } from "./log.ts";
-import type { Decision, StoredMap } from "./map.ts";
+import { PICK_QUESTION } from "./design-card.ts";
+import { letteredOptions, type Decision, type StoredMap } from "./map.ts";
 import { BUILD_MAP_WORKER, pendingBuild, repoDataDir, type BuildMapInput, type MapStore, type NextProblem, type TaskLister } from "./map-store.ts";
 import { BUILD_LIMITS, buildMapPrompt } from "./worker.ts";
 import {
@@ -530,8 +531,8 @@ export function formatProblemForAgent(map: StoredMap, problem: ProblemToRun): st
     "Constraints, one at a time:",
     ...d.constraints.map((c, i) => `${i + 1}. ${c.text} -> breaks: ${c.breaks}`),
     `Decision (never state it): ${d.decision.technique}: ${d.decision.definition} Here: ${d.decision.inThisCode}`,
-    "Options (only when stuck):",
-    ...d.options.map((o) => `- ${o.approach}: ${o.tradeoff}`),
+    `Options (only when stuck; on the ${PICK_QUESTION.toolName} card keep these letters and this order):`,
+    ...letteredOptions(d).map(({ letter, option }) => `${letter}. ${option.approach}: ${option.tradeoff}`),
     `Done: ${TOOL_NAMES.logProblem} id ${d.id}. Skipped: ${TOOL_NAMES.skipProblem}.`,
   ]
     .filter(Boolean)
@@ -593,6 +594,9 @@ const LogProblemParameters = Type.Object(
     didWell: Note("What was strong."),
     didOk: Note("What worked but was shaky."),
     betterIdea: Type.Optional(Note("Only if their design beat the original.")),
+    explained: Type.Optional(
+      Type.Boolean({ description: "true when you explained the design to them (they asked to be shown) instead of them deriving it." }),
+    ),
   },
   { additionalProperties: false },
 );
@@ -623,6 +627,7 @@ function logEntryFrom(input: Static<typeof LogProblemParameters>): LogEntry {
     didWell: input.didWell,
     didOk: input.didOk,
     ...(input.betterIdea?.trim() ? { betterIdea: input.betterIdea } : {}),
+    ...(input.explained ? { explained: true } : {}),
   };
 }
 
@@ -654,6 +659,7 @@ export function createLogProblemTool(deps: ToolDeps, context: PluginToolContext)
     label: "Log problem",
     description:
       "Rederive plugin: record how the learner did on a problem they finished, once their design holds up. " +
+      "If you explained the design to them instead, pass explained: true. " +
       `Not for skips: use ${TOOL_NAMES.skipProblem}. Returns the next problem.`,
     parameters: LogProblemParameters,
     execute: async (_id, input, toolSignal) => recordProblem(deps, context.chatId, input.id, logEntryFrom(input), toolSignal),

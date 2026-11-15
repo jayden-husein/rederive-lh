@@ -6,6 +6,7 @@ import { isRepoRelative } from "./authorship.ts";
 
 export const MIN_DECISIONS = 5;
 export const MAX_DECISIONS = 10;
+export const MAX_CONSTRAINTS = 6;
 
 const Text = (description: string, maxLength = 1000) => Type.String({ minLength: 1, maxLength, description });
 
@@ -23,7 +24,7 @@ export const DecisionSchema = Type.Object(
         },
         { additionalProperties: false },
       ),
-      { minItems: 1, maxItems: 6, description: "Constraints in the order they should be introduced." },
+      { minItems: 1, maxItems: MAX_CONSTRAINTS, description: "Constraints in the order they should be introduced." },
     ),
     decision: Type.Object(
       {
@@ -38,6 +39,14 @@ export const DecisionSchema = Type.Object(
         {
           approach: Text("One approach to the problem.", 300),
           tradeoff: Text("Its tradeoff in one line.", 300),
+          real: Type.Boolean({ description: "true for the approach this codebase uses; exactly one per decision." }),
+          failsAt: Type.Optional(
+            Type.Integer({
+              minimum: 0,
+              maximum: MAX_CONSTRAINTS,
+              description: "Other approaches only: the first constraint (1-based) it can't survive, or 0 if it fails the bare problem.",
+            }),
+          ),
         },
         { additionalProperties: false },
       ),
@@ -62,8 +71,40 @@ export const DecisionMapResultSchema = Type.Object(
 );
 
 type WorkerDecision = Static<typeof DecisionSchema>;
+type WorkerOption = WorkerDecision["options"][number];
+/** A map option. Maps built before step 9 have no `real`/`failsAt`. */
+export type DecisionOption = Omit<WorkerOption, "real"> & Partial<Pick<WorkerOption, "real">>;
 /** A map decision. Maps built before step 8 have no `files`. */
-export type Decision = Omit<WorkerDecision, "files"> & Partial<Pick<WorkerDecision, "files">>;
+export type Decision = Omit<WorkerDecision, "files" | "options"> & Partial<Pick<WorkerDecision, "files">> & { options: DecisionOption[] };
+
+export const OPTION_LETTERS = ["A", "B", "C", "D"] as const;
+
+/** FNV-1a: a small stable hash, so the option order is the same on every turn. */
+function stableHash(value: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < value.length; i++) {
+    h ^= value.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h;
+}
+
+/**
+ * The options as the teacher poses them: lettered A.. in an order shuffled by a stable
+ * hash, because the worker tends to list the real one first. Grading maps a letter back
+ * through this same order.
+ */
+export function letteredOptions(d: Pick<Decision, "id" | "options">): { letter: string; option: DecisionOption }[] {
+  return d.options
+    .map((option, index) => ({ option, index, key: stableHash(`${d.id}|${option.approach}`) }))
+    .sort((a, b) => a.key - b.key || a.index - b.index)
+    .map(({ option }, i) => ({ letter: OPTION_LETTERS[i] ?? String(i + 1), option }));
+}
+
+/** True when the map says which option is real (maps built from step 9 on). */
+export function hasMarkedOptions(d: Decision): boolean {
+  return d.options.some((o) => typeof o.real === "boolean");
+}
 export type DecisionMapResult = Omit<Static<typeof DecisionMapResultSchema>, "decisions"> & { decisions: Decision[] };
 
 /** What we store in map.json: the worker's result plus where it came from. */
@@ -101,7 +142,30 @@ export function validateMapResult(result: unknown): asserts result is DecisionMa
       if (!isRepoRelative(String(file))) problems.push(`${d.id}.files has "${file}"; use paths relative to the repo root, without "..".`);
     }
   });
+  // Grading reads these; maps built before step 9 carry no marks and are graded by the model.
+  decisions.forEach((d) => {
+    const options: DecisionOption[] = Array.isArray(d?.options) ? d.options : [];
+    if (!hasMarkedOptions({ ...d, options })) return;
+    if (options.filter((o) => o.real === true).length !== 1) problems.push(`${d.id} must mark exactly one option real: true (the approach this codebase uses).`);
+    const count = Array.isArray(d.constraints) ? d.constraints.length : 0;
+    options.forEach((o, i) => {
+      const where = `${d.id} option ${i + 1}`;
+      if (o.real === true) {
+        if (o.failsAt !== undefined) problems.push(`${where} is real, so leave out failsAt.`);
+      } else if (o.failsAt === undefined) {
+        problems.push(`${where} is not real, so it needs failsAt: the first constraint it can't survive (0 if it fails the bare problem).`);
+      } else if (o.failsAt > count) {
+        problems.push(`${where} has failsAt ${o.failsAt}, but ${d.id} has ${count} constraint${count === 1 ? "" : "s"}.`);
+      }
+    });
+  });
   if (problems.length) throw new Error(`Fix the map and submit again:\n- ${problems.join("\n- ")}`);
+}
+
+function optionMark(o: DecisionOption): string {
+  if (o.real === true) return " (real)";
+  if (o.failsAt === undefined) return "";
+  return o.failsAt === 0 ? " (fails the bare problem)" : ` (fails at constraint ${o.failsAt})`;
 }
 
 /** Rederive's map.md layout, for the learner to read after the session (never shown mid-problem). */
@@ -121,7 +185,7 @@ export function renderMapMarkdown(map: StoredMap): string {
       ...d.constraints.map((c, i) => `  ${i + 1}. ${c.text} -> breaks: ${c.breaks}`),
       `- Decision: ${d.decision.technique}: ${d.decision.definition} In this code: ${d.decision.inThisCode}`,
       "- Options:",
-      ...d.options.map((o) => `  - ${o.approach}: ${o.tradeoff}`),
+      ...d.options.map((o) => `  - ${o.approach}: ${o.tradeoff}${optionMark(o)}`),
       ...(d.files ? [`- Files: ${d.files.join(", ")}`] : []),
       `- Evidence: ${d.evidence}`,
     );

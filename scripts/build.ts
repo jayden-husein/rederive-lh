@@ -35,4 +35,5 @@ await Promise.all([
 ]);
 
 copyFileSync(join(root, "src", "manifest.json"), join(dist, "manifest.json"));
+copyFileSync(join(root, "src", "styles.css"), join(dist, "styles.css"));
 console.log(`Built ${dist}`);

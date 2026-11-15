@@ -3,6 +3,7 @@ import type { PluginBackendContext } from "learnharness-plugin-api";
 import { proberInstructions, teacherInstructions } from "./instructions.ts";
 import { MapStore } from "./map-store.ts";
 import { MAX_SOURCE_CHARS, OPERATIONS, type LogView, type PendingStart, type StartRederiveResult } from "./names.ts";
+import { createDesignQuestionType, createPickQuestionType } from "./grading.ts";
 import { readLog } from "./log.ts";
 import { SessionStore } from "./sessions.ts";
 import { SettingsStore, type Settings } from "./settings.ts";
@@ -70,6 +71,17 @@ export async function activate(ctx: PluginBackendContext): Promise<void> {
     agents: ["prober", "teacher"],
     create: (context) => createTools(deps, context),
   });
+
+  // The graded cards (teacher only): free-text design and option pick. Grading reads the
+  // map through the chat id.
+  const graderDeps = {
+    store,
+    maps,
+    catalog: () => ctx.inference.catalog(),
+    complete: (request: Parameters<typeof ctx.inference.complete>[0]) => ctx.inference.complete(request),
+  };
+  ctx.registerQuestionType(createDesignQuestionType(graderDeps));
+  ctx.registerQuestionType(createPickQuestionType(graderDeps));
 
   ctx.handle(OPERATIONS.getSettings, () => settingsStore.get());
   ctx.handle(OPERATIONS.saveSettings, async (input) => {

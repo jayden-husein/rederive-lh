@@ -17,7 +17,7 @@ before(() => {
 });
 
 test("dist has the runtime layout LearnHarness expects", () => {
-  for (const file of ["manifest.json", "backend.cjs", "main.js"]) {
+  for (const file of ["manifest.json", "backend.cjs", "main.js", "styles.css"]) {
     assert.ok(existsSync(join(dist, file)), `missing dist/${file}`);
   }
   assert.equal(existsSync(join(dist, "data")), false);
@@ -32,6 +32,7 @@ test("manifest matches the plugin id and package version", () => {
   assert.match(manifest.minAppVersion, /^\d+\.\d+\.\d+$/);
   assert.equal(manifest.main, "main.js");
   assert.equal(manifest.backend, "backend.cjs");
+  assert.equal(manifest.styles, "styles.css");
 });
 
 test("frontend bundle is an ES module exporting activate", () => {
@@ -47,12 +48,14 @@ test("backend registers the worker, tools, instructions and frontend operations"
   const workers: { id: string; tools?: unknown; validateResult?: unknown }[] = [];
   const instructions: { agents: string[]; text: string; active: boolean }[] = [];
   const handlers = new Map<string, (input: unknown) => unknown>();
+  const questionTypes: { id: string; teach?: { toolName: string }; probe?: unknown; gradeAnswer?: unknown }[] = [];
   const controller = new AbortController();
   const data = tempDir("build-backend");
   await backend.activate({
     signal: controller.signal,
     dataDirectory: data,
     registerTools: (r: any) => registrations.push(r),
+    registerQuestionType: (q: any) => (questionTypes.push(q), () => {}),
     registerInstructions: (r: { agents: string[]; text: string }) => {
       const entry = { ...r, active: true };
       instructions.push(entry);
@@ -90,6 +93,13 @@ test("backend registers the worker, tools, instructions and frontend operations"
   assert.equal(typeof workers[0]!.tools, "function");
   assert.equal(typeof workers[0]!.validateResult, "function");
 
+  // The graded design card: teacher only, graded in the backend.
+  assert.deepEqual(questionTypes.map((q) => [q.id, q.teach?.toolName, q.probe]), [
+    ["rederive-design", "rederive_ask_design", undefined],
+    ["rederive-pick", "rederive_ask_pick", undefined],
+  ]);
+  for (const q of questionTypes) assert.equal(typeof q.gradeAnswer, "function");
+
   assert.equal(registrations.length, 1);
   const registration = registrations[0]!;
   assert.deepEqual(registration.agents, ["prober", "teacher"]);
@@ -106,9 +116,11 @@ test("frontend registers the tool cards, settings rows and the top-bar action", 
   const placements: { actionId: string; location: string; sessions?: string[] }[] = [];
   let settingsRows: { key: string }[] = [];
   const interceptors: { id: string }[] = [];
+  const questionRenderers: { id: string; supportedContractVersions: number[]; mountAnswered?: unknown }[] = [];
   frontend.activate({
     signal: new AbortController().signal,
     registerToolRenderer: (r: { toolName: string }) => (renderers.push(r.toolName), () => {}),
+    registerQuestionRenderer: (r: any) => (questionRenderers.push(r), () => {}),
     registerAction: (a: any) => (actions.push(a), () => {}),
     placeAction: (p: any) => (placements.push(p), () => {}),
     registerSettings: (s: { rows: { key: string }[] }) => ((settingsRows = s.rows), { update: () => {}, dispose: () => {} }),
@@ -117,6 +129,8 @@ test("frontend registers the tool cards, settings rows and the top-bar action", 
     onResync: () => () => {},
   });
   assert.deepEqual(interceptors.map((i) => i.id), ["rederive-restart-note"]);
+  assert.deepEqual(questionRenderers.map((r) => [r.id, r.supportedContractVersions]), [["rederive-design", [1]], ["rederive-pick", [1]]]);
+  for (const r of questionRenderers) assert.equal(typeof r.mountAnswered, "function");
   assert.deepEqual(renderers.sort(), [
     "rederive_build_map",
     "rederive_log_problem",
@@ -143,6 +157,7 @@ test("after the button, the next teaching message gets the restart note, cleared
   frontend.activate({
     signal: new AbortController().signal,
     registerToolRenderer: () => () => {},
+    registerQuestionRenderer: () => () => {},
     registerAction: () => () => {},
     placeAction: () => () => {},
     registerSettings: () => ({ update: () => {}, dispose: () => {} }),

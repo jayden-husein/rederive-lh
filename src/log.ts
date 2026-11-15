@@ -12,11 +12,15 @@ export interface LogEntry {
   didWell: string;
   didOk: string;
   betterIdea?: string;
+  /** The design was explained to them, not derived: the log says so in a fixed line. */
+  explained?: boolean;
   /** Whose code the problem is about, when the chat recorded which parts the learner wrote. */
   part?: Exclude<PartTag, "unknown">;
 }
 
 const SKIPPED_BODY = "skipped";
+/** Fixed wording, so an explained problem never reads as derived whatever the notes say. */
+const EXPLAINED_LINE = "how: explained to them, not derived";
 
 /** Collapse to one line so a stray "## D3." in the agent's text can't fake a heading. */
 function oneLine(value: string): string {
@@ -37,6 +41,7 @@ export function formatLogEntry(decision: Pick<Decision, "id" | "title">, entry: 
   ];
   if (entry.part) lines.push(`whose part: ${PART_LABELS[entry.part]}`);
   if (entry.betterIdea?.trim()) lines.push(`better idea: ${oneLine(entry.betterIdea)}`);
+  if (entry.explained) lines.push(EXPLAINED_LINE);
   return `${lines.join("\n")}\n`;
 }
 
