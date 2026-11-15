@@ -140,6 +140,8 @@ test("build_map refuses while a build is running", async () => {
     assert.equal(s.details.mapBuilding, true);
     assert.match(textOf(s), /being built in the background/);
     assert.equal((await tools("chat-a").nextProblem.execute("2", {})).details.state, "building");
+    const log = { id: "D1", struggled: "s", foundAlone: "f", didWell: "w", didOk: "o" };
+    await assert.rejects(tools("chat-a").logProblem.execute("3", log), /^Error: Nothing was logged\. The map is still being built\./);
   } finally {
     tasks.pop();
   }
@@ -149,6 +151,7 @@ test("next_problem says to build a map when none exists", async () => {
   const result = await tools("chat-a").nextProblem.execute("1", {});
   assert.equal(result.details.state, "no-map");
   assert.match(textOf(result), /rederive_build_map/);
+  await assert.rejects(tools("chat-a").skipProblem.execute("2", { id: "D1" }), /Nothing was logged\. No map yet\. Call rederive_build_map first\./);
 });
 
 test("format reports only the problem count, never the decisions", () => {

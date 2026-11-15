@@ -64,7 +64,9 @@ test("the prober asks about ownership only on a conflict, and names no design pr
 test("the always-on teacher text is short and points to rederive_status for the rules", () => {
   const text = teacherInstructions(base);
   assert.ok(text.length < 1400, `teacher instructions are ${text.length} chars`);
-  assert.match(text, /when its description says the saved state changed/);
+  assert.match(text, /on your first turn after the handoff, and when earlier history seems summarized\./);
+  // The button's restart arrives only as the message note, not through the status description.
+  assert.doesNotMatch(text, /saved state changed/);
   assert.match(text, /its description carries this chat's teaching rules/);
   assert.doesNotMatch(text, /Why did you build this/);
 });

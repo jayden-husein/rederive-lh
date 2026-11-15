@@ -65,7 +65,7 @@ ${restartNote("hand off with probe_done at once")}`;
 
 export function teacherInstructions(settings: Settings): string {
   return `## Rederive plugin
-If this chat is about a codebase, call ${T.status} on your first turn after the handoff, when earlier history seems summarized, and when its description says the saved state changed. In rederive or onboarding mode its description carries this chat's teaching rules: follow them. Otherwise teach as usual.
+If this chat is about a codebase, call ${T.status} on your first turn after the handoff, and when earlier history seems summarized. In rederive or onboarding mode its description carries this chat's teaching rules: follow them. Otherwise teach as usual.
 ${OVERRIDES}
 ${restartNote("open with the root problem")}
 In a codebase chat in any mode: ${QUESTIONS} Exceptions: design answers and concept checks in rederive go on the cards the mode rules name.${settings.defaultMode === "never" ? `\n${routing("never")}` : ""}`;
