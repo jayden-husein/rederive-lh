@@ -100,10 +100,7 @@ export async function activate(ctx: PluginBackendContext): Promise<void> {
 
   // The restart note: the frontend asks before each message in a teaching chat and
   // clears the start once the message carrying the note is accepted.
-  ctx.handle(OPERATIONS.pendingStart, async (input): Promise<PendingStart | null> => {
-    const state = await store.getChat(parseChatId(input));
-    return state.startPending && state.repo ? { repoName: state.repo.name, stamp: state.startPending } : null;
-  });
+  ctx.handle(OPERATIONS.pendingStart, async (input): Promise<PendingStart | null> => store.pendingStart(parseChatId(input)));
   ctx.handle(OPERATIONS.clearStart, async (input) => {
     const stamp = asRecord(input).stamp;
     if (typeof stamp !== "string") throw new Error("A stamp is required.");

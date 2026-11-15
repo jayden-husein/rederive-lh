@@ -244,25 +244,18 @@ const ALL_DONE =
 
 const STATE_MARKS: Record<ProblemState, string> = { done: "[done]", skipped: "[skipped]", todo: "[to do]" };
 
-const RESTART =
-  `Restart requested: the learner pressed "Rederive this repo" for this repo. Start fresh: ` +
-  `call ${TOOL_NAMES.buildMap} with rebuild: true, then open with the root problem.`;
-
 /**
- * The chat's saved mode and repo, read synchronously when the turn's tools are built,
- * plus a pending restart. It reaches the agent even when the learner used the top-bar
- * action, which posts no chat message.
+ * The chat's saved mode and repo, read synchronously when the turn's tools are built. It
+ * reaches the agent even when the learner used the top-bar action, which posts no chat
+ * message. A restart from that action reaches it only as the note in front of the
+ * learner's next message (registerRestartNote in main.ts).
  */
 export function savedStateLine(deps: Pick<ToolDeps, "store">, context: PluginToolContext): string {
   const state = deps.store.peekChat(context.chatId);
   if (!state) return "";
   const mode = state.mode ?? "not set";
   const repo = state.repo ? `"${state.repo.name}"` : "none";
-  // The restart is the teacher's to act on, so only its status call takes it.
-  const restart = state.startPending && context.agent === "teacher"
-    ? ` The saved state changed: the learner pressed "Rederive this repo". Call ${TOOL_NAMES.status} now.`
-    : "";
-  return ` Saved state for this chat at the start of this turn: mode ${mode}, repo ${repo}.${restart}`;
+  return ` Saved state for this chat at the start of this turn: mode ${mode}, repo ${repo}.`;
 }
 
 function statusDescription(deps: Pick<ToolDeps, "store">, context: PluginToolContext): string {
@@ -285,7 +278,7 @@ export function createStatusTool(deps: ToolDeps, context: PluginToolContext): Ag
     execute: async (_id, _input, toolSignal) => {
       const signal = combinedSignal(deps, toolSignal);
       checkAborted(signal);
-      const state = context.agent === "teacher" ? await deps.store.takeChat(context.chatId) : await deps.store.getChat(context.chatId);
+      const state = await deps.store.getChat(context.chatId);
       const course = state.repo ? await deps.maps.course(state.repo.id, state.parts) : null;
       const ready = course?.state === "ready" ? course : null;
       const next = ready?.next ?? null;
@@ -318,7 +311,6 @@ export function createStatusTool(deps: ToolDeps, context: PluginToolContext): Ag
         : [];
       const map = ready?.map;
       const lines = [
-        state.startPending && context.agent === "teacher" ? RESTART : "",
         `Mode: ${state.mode ?? "not set"}.`,
         state.repo ? `Repo: "${state.repo.name}" at ${state.repo.path}.` : "Repo: none opened in this chat.",
         state.parts ? `Group project: the learner wrote ${state.parts.join(", ")}. Their problems come first.` : "",

@@ -285,18 +285,17 @@ test("the teacher's status description carries the rules for the chat's mode; th
   assert.doesNotMatch(describe("chat-rules", "teacher"), /###/);
 });
 
-test("the top-bar action's restart shows in the description until one status call reports it", async () => {
+test("the top-bar action's restart stays out of the tools: only the message note carries it", async () => {
   const describe = () => createTools(deps, { chatId: "chat-a", agent: "teacher" }).find((tool) => tool.name === "rederive_status")!.description;
-  // The chat is already in rederive mode: before the fix, nothing visible changed.
   await deps.store.setMode("chat-a", "rederive");
   const before = describe();
+  const statusBefore = textOf(await tools("chat-a").status.execute("1", {}));
   await deps.store.requestStart("chat-a");
-  assert.notEqual(describe(), before);
-  assert.match(describe(), /the learner pressed "Rederive this repo"\. Call rederive_status now\./);
-  const status = textOf(await tools("chat-a").status.execute("1", {}));
-  assert.match(status, /^Restart requested: .*open with the root problem\./);
   assert.equal(describe(), before);
-  assert.doesNotMatch(textOf(await tools("chat-a").status.execute("2", {})), /Restart requested/);
+  assert.equal(textOf(await tools("chat-a").status.execute("2", {})), statusBefore);
+  // A status call doesn't consume it: the note still goes in front of the next message.
+  assert.notEqual(await deps.store.pendingStart("chat-a"), null);
+  await deps.store.clearStart("chat-a", (await deps.store.pendingStart("chat-a"))!.stamp);
 });
 
 test("status's description carries the chat's saved mode and repo, read synchronously", async () => {

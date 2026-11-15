@@ -14,32 +14,39 @@ beforeEach(() => {
 afterEach(() => removeDir(data));
 
 const repo = { id: "tiny-abc123", name: "tiny", kind: "local" as const, source: "C:\\tiny", path: "C:\\tiny" };
-const empty = { mode: null, repo: null, startPending: null, parts: null };
+const empty = { mode: null, repo: null, parts: null };
 
-test("a start request sets rederive and is reported to exactly one takeChat", async () => {
+test("a start request sets rederive and stays pending, across restarts, until cleared", async () => {
   const store = new SessionStore(data, () => new Date("2026-11-14T08:00:00.000Z"));
   await store.setRepo("chat-s", repo);
   await store.setMode("chat-s", "onboarding");
   await store.requestStart("chat-s");
-  assert.equal(store.peekChat("chat-s")?.startPending, "2026-11-14T08:00:00.000Z");
-  const first = await store.takeChat("chat-s");
-  assert.equal(first.mode, "rederive");
-  assert.equal(first.startPending, "2026-11-14T08:00:00.000Z");
-  assert.equal((await store.takeChat("chat-s")).startPending, null);
-  // Cleared on disk too, so a server restart doesn't bring it back.
-  assert.equal((await new SessionStore(data).getChat("chat-s")).startPending, null);
+  assert.equal((await store.getChat("chat-s")).mode, "rederive");
+  const pending = { repoName: "tiny", stamp: "2026-11-14T08:00:00.000Z" };
+  assert.deepEqual(await store.pendingStart("chat-s"), pending);
+  // Reading it doesn't consume it, and a server restart keeps it.
+  assert.deepEqual(await new SessionStore(data).pendingStart("chat-s"), pending);
+  await store.clearStart("chat-s", pending.stamp);
+  assert.equal(await new SessionStore(data).pendingStart("chat-s"), null);
+});
+
+test("a start request without a repo is not pending: there is nothing to restart with", async () => {
+  const store = new SessionStore(data);
+  await store.requestStart("chat-s");
+  assert.equal(await store.pendingStart("chat-s"), null);
 });
 
 test("clearStart clears only the press it was given, so a newer press survives", async () => {
   let now = "2026-11-14T08:00:00.000Z";
   const store = new SessionStore(data, () => new Date(now));
+  await store.setRepo("chat-s", repo);
   await store.requestStart("chat-s");
   now = "2026-11-14T08:05:00.000Z";
   await store.requestStart("chat-s");
   await store.clearStart("chat-s", "2026-11-14T08:00:00.000Z");
-  assert.equal((await store.getChat("chat-s")).startPending, "2026-11-14T08:05:00.000Z");
+  assert.equal((await store.pendingStart("chat-s"))?.stamp, "2026-11-14T08:05:00.000Z");
   await store.clearStart("chat-s", "2026-11-14T08:05:00.000Z");
-  assert.equal((await store.getChat("chat-s")).startPending, null);
+  assert.equal(await store.pendingStart("chat-s"), null);
 });
 
 test("a fresh store reports nothing and creates no file", async () => {

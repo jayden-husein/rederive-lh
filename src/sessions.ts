@@ -3,6 +3,7 @@
 import { readFile, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { writeFileAtomic } from "./atomic.ts";
+import type { PendingStart } from "./names.ts";
 
 export const MODES = ["rederive", "onboarding", "normal"] as const;
 export type Mode = (typeof MODES)[number];
@@ -24,8 +25,8 @@ export interface ChatRecord {
   mode?: Mode;
   repoId?: string;
   /**
-   * Set when the learner pressed "Rederive this repo": the agent should restart with the
-   * chat's repo. Cleared by the next rederive_status call.
+   * Set when the learner pressed "Rederive this repo": the next message in the chat gets
+   * the restart note. Cleared once that message is accepted.
    */
   startPending?: string;
   /** Group project: the repo-relative folders/files the learner wrote. Cleared when the repo changes. */
@@ -53,8 +54,6 @@ function isSessionsFile(value: unknown): value is SessionsFile {
 export interface ChatState {
   mode: Mode | null;
   repo: RepoRecord | null;
-  /** When the top-bar action asked for a restart that no status call has seen yet. */
-  startPending: string | null;
   /** Which parts the learner wrote; null when they didn't say (or wrote all of it). */
   parts: string[] | null;
 }
@@ -62,7 +61,7 @@ export interface ChatState {
 function chatState(data: SessionsFile, chatId: string): ChatState {
   const chat = data.chats[chatId];
   const repo = chat?.repoId ? data.repos[chat.repoId] ?? null : null;
-  return { mode: chat?.mode ?? null, repo: repo ? { ...repo } : null, startPending: chat?.startPending ?? null, parts: chat?.parts ? [...chat.parts] : null };
+  return { mode: chat?.mode ?? null, repo: repo ? { ...repo } : null, parts: chat?.parts ? [...chat.parts] : null };
 }
 
 export class SessionStore {
@@ -153,7 +152,10 @@ export class SessionStore {
     });
   }
 
-  /** The top-bar action: switch to rederive and ask the agent to restart with the chat's repo. */
+  /**
+   * The top-bar action: switch to rederive and mark a restart. The restart reaches the
+   * agent only as the note in front of the learner's next message (see `pendingStart`).
+   */
   async requestStart(chatId: string): Promise<void> {
     await this.mutate((data) => {
       const stamp = this.now().toISOString();
@@ -161,36 +163,24 @@ export class SessionStore {
     });
   }
 
-  /**
-   * Read the chat's state and clear a pending start in one step, so a restart is reported
-   * to exactly one status call. Writes only when something was pending.
-   */
-  async takeChat(chatId: string): Promise<ChatState> {
+  /** A button press whose restart note hasn't been accepted yet; null without one or without a repo. */
+  async pendingStart(chatId: string): Promise<PendingStart | null> {
     return this.serialize(async () => {
-      const current = await this.load();
-      const state = chatState(current, chatId);
-      if (state.startPending) await this.writeWithoutStart(current, chatId);
-      return state;
+      const data = await this.load();
+      const stamp = data.chats[chatId]?.startPending;
+      const repo = chatState(data, chatId).repo;
+      return stamp && repo ? { repoName: repo.name, stamp } : null;
     });
   }
 
   /**
-   * Clear the pending start once the restart note reached the agent, unless the button
-   * was pressed again since (`stamp` no longer matches).
+   * Clear the pending start once the message carrying the note was accepted, unless the
+   * button was pressed again since (`stamp` no longer matches).
    */
   async clearStart(chatId: string, stamp: string): Promise<void> {
-    await this.serialize(async () => {
-      const current = await this.load();
-      if (current.chats[chatId]?.startPending === stamp) await this.writeWithoutStart(current, chatId);
+    await this.mutate((data) => {
+      if (data.chats[chatId]?.startPending === stamp) delete data.chats[chatId]!.startPending;
     });
-  }
-
-  /** Caller must hold the queue. */
-  private async writeWithoutStart(current: SessionsFile, chatId: string): Promise<void> {
-    const next = structuredClone(current);
-    delete next.chats[chatId]!.startPending;
-    await writeFileAtomic(this.file, `${JSON.stringify(next, null, 2)}\n`);
-    this.cache = next;
   }
 
   /** Register (or refresh) a repo and make it this chat's current repo. */
