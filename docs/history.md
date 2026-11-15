@@ -288,8 +288,11 @@ Git history has the code.
    marked [to do]); the partner interview line didn't use "My partner built…"
    (that form is now in the partner tag line).
 
-   **Step 8 is done (2026-11-14).** The routing eval was not re-run after the
-   prober text changed; run `npm run routing-report` before relying on it.
+   **Step 8 is done (2026-11-14).** Routing eval re-run after the prober
+   changes (2026-11-15): 15/15, no routing question asked. R2 and O4 (cs50final,
+   "my project") got the ownership card and the which-parts card before the
+   mode; O1 got the ownership card because "joining the team" contradicts the
+   git guess (100% the learner's email), as the conflict rule says.
 
 ## Skills used per step
 
