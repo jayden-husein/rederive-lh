@@ -10,6 +10,7 @@ import { GitError, isGitWorkTree, runGit } from "./git.ts";
 import { summarizeRepo } from "./history.ts";
 import type { LogEntry } from "./log.ts";
 import { PICK_QUESTION } from "./design-card.ts";
+import { confidenceSchema } from "./grading.ts";
 import { letteredOptions, type Decision, type StoredMap } from "./map.ts";
 import { BUILD_MAP_WORKER, pendingBuild, repoDataDir, type BuildMapInput, type CourseProblem, type MapStore, type ProblemState, type TaskLister } from "./map-store.ts";
 import { BUILD_LIMITS, buildMapPrompt } from "./worker.ts";
@@ -581,6 +582,11 @@ const LogProblemParameters = Type.Object(
     explained: Type.Optional(
       Type.Boolean({ description: "true when you explained the design to them (they asked to be shown) instead of them deriving it." }),
     ),
+    confidence: Type.Optional(
+      confidenceSchema({
+        description: "The confidence on their last answer card for this problem, copied from the answer. Omit if no card carried one.",
+      }),
+    ),
   },
   { additionalProperties: false },
 );
@@ -614,6 +620,7 @@ export function logEntryFrom(input: Static<typeof LogProblemParameters>): LogEnt
     didOk: input.didOk,
     ...(input.betterIdea?.trim() ? { betterIdea: input.betterIdea } : {}),
     ...(input.explained ? { explained: true } : {}),
+    ...(input.confidence !== undefined ? { confidence: input.confidence } : {}),
   };
 }
 

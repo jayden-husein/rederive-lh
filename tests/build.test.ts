@@ -129,7 +129,7 @@ test("frontend registers the tool cards, settings rows and the top-bar action", 
     onResync: () => () => {},
   });
   assert.deepEqual(interceptors.map((i) => i.id), ["rederive-restart-note"]);
-  assert.deepEqual(questionRenderers.map((r) => [r.id, r.supportedContractVersions]), [["rederive-design", [1]], ["rederive-pick", [1]]]);
+  assert.deepEqual(questionRenderers.map((r) => [r.id, r.supportedContractVersions]), [["rederive-design", [1, 2]], ["rederive-pick", [1, 2]]]);
   for (const r of questionRenderers) assert.equal(typeof r.mountAnswered, "function");
   assert.deepEqual(renderers.sort(), [
     "rederive_build_map",

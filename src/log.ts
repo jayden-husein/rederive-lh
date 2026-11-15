@@ -16,6 +16,8 @@ export interface LogEntry {
   explained?: boolean;
   /** Whose code the problem is about, when the chat recorded which parts the learner wrote. */
   part?: Exclude<PartTag, "unknown">;
+  /** How sure the learner was on their last card answer for the problem, in percent. */
+  confidence?: number;
 }
 
 const SKIPPED_BODY = "skipped";
@@ -42,6 +44,7 @@ export function formatLogEntry(decision: Pick<Decision, "id" | "title">, entry: 
   if (entry.part) lines.push(`whose part: ${PART_LABELS[entry.part]}`);
   if (entry.betterIdea?.trim()) lines.push(`better idea: ${oneLine(entry.betterIdea)}`);
   if (entry.explained) lines.push(EXPLAINED_LINE);
+  if (entry.confidence !== undefined) lines.push(`confidence: ${entry.confidence}% on the last answer`);
   return `${lines.join("\n")}\n`;
 }
 

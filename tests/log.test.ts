@@ -20,6 +20,11 @@ test("an entry uses rederive's log format and omits an empty better idea", () =>
   assert.match(formatLogEntry({ id: "D1", title: "t" }, { ...entry, betterIdea: "a trie" }), /better idea: a trie\n$/);
 });
 
+test("the last answer's confidence is recorded when given", () => {
+  assert.match(formatLogEntry({ id: "D2", title: "t" }, { ...entry, confidence: 90 }), /\nconfidence: 90% on the last answer\n$/);
+  assert.doesNotMatch(formatLogEntry({ id: "D2", title: "t" }, entry), /confidence/);
+});
+
 test("an explained problem gets a fixed line, and still counts as done", () => {
   const text = formatLogEntry({ id: "D2", title: "t" }, { ...entry, explained: true });
   assert.match(text, /\nhow: explained to them, not derived\n$/);

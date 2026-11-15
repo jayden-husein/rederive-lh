@@ -1,7 +1,8 @@
 // The graded cards in the browser: the design card (one text box; no host thinking box,
 // so dictation comes into the box) and the pick card (option rows; the host thinking
 // box takes the reasoning and dictation). Both share the answered view: the answer, the
-// verdict badge and the constraint it fails. Option texts and saved answers go through
+// verdict badge (with how sure they were) and the constraint it fails. Version 2 cards
+// add a confidence slider under the answer. Option texts and saved answers go through
 // the host Markdown pipeline; styles.css uses host theme tokens.
 import type {
   PluginFrontendContext,
@@ -10,7 +11,21 @@ import type {
   PluginQuestionEditorProps,
   PluginQuestionRenderer,
 } from "learnharness-plugin-api";
-import { answerText, DESIGN_QUESTION, gradeView, PICK_QUESTION, type DesignAnswer, type DesignPayload, type GradeView } from "./design-card.ts";
+import {
+  answerText,
+  CARD_CONTRACT_VERSION,
+  DEFAULT_CONFIDENCE,
+  DESIGN_QUESTION,
+  gradeView,
+  PICK_QUESTION,
+  readConfidence,
+  SHOWN_CONTRACT_VERSIONS,
+  snapConfidence,
+  type Confidence,
+  type DesignAnswer,
+  type DesignPayload,
+  type GradeView,
+} from "./design-card.ts";
 
 type Ui = PluginFrontendContext["ui"];
 
@@ -24,7 +39,59 @@ const TONE_COLORS: Record<GradeView["tone"], string | undefined> = {
 };
 
 /** A draft: any part of either answer shape, as the host hands it back. */
-type Draft = Partial<{ choice: string; design: string }>;
+type Draft = Partial<{ choice: string; design: string; confidence: Confidence }>;
+
+interface ConfidenceSlider {
+  /** Null on a version 1 card, which has no slider: its saved schema has no confidence. */
+  value(): Confidence | null;
+  apply(value: Confidence | null, active: boolean): void;
+}
+
+/**
+ * "How sure are you it holds up?", snapping to the native quiz's stops and resting at 50%.
+ * `onChange` runs when the learner moves it.
+ */
+function mountConfidence(root: HTMLElement, props: PluginQuestionEditorProps, onChange: () => void): ConfidenceSlider {
+  if (props.contractVersion < CARD_CONTRACT_VERSION) return { value: () => null, apply: () => undefined };
+  const doc = root.ownerDocument;
+  const row = doc.createElement("label");
+  row.className = "rederive-confidence";
+  const caption = doc.createElement("span");
+  caption.textContent = "How sure are you it holds up?";
+  const input = doc.createElement("input");
+  input.type = "range";
+  input.min = "0";
+  input.max = "100";
+  input.step = "1";
+  input.title = "50% is a coin flip. Adjust with ←/→.";
+  const shown = doc.createElement("span");
+  shown.className = "rederive-confidence-value";
+  row.append(caption, input, shown);
+  root.append(row);
+  let current: Confidence = DEFAULT_CONFIDENCE;
+  const show = () => {
+    input.value = String(current);
+    shown.textContent = `${current}%`;
+    input.setAttribute("aria-valuetext", `${current} percent`);
+  };
+  input.addEventListener("input", () => {
+    const next = snapConfidence(Number(input.value));
+    if (next !== current) {
+      current = next;
+      onChange();
+    }
+    show();
+  });
+  show();
+  return {
+    value: () => current,
+    apply: (value, active) => {
+      current = value ?? current;
+      input.disabled = !active;
+      show();
+    },
+  };
+}
 
 function readAnswer(state: PluginQuestionAnswerState): Draft {
   if (state.status === "empty" || typeof state.value !== "object" || state.value === null) return {};
@@ -73,6 +140,11 @@ function mountChoiceEditor(ui: Ui, container: HTMLElement, payload: DesignPayloa
   let active = props.active;
   let disposed = false;
   const widgets: { dispose(): void }[] = [];
+  const publish = (choice: string) => {
+    if (disposed || !active) return;
+    const confidence = slider.value();
+    props.onChange({ status: "ready", value: confidence === null ? { choice } : { choice, confidence } });
+  };
   const inputs = (payload.options ?? []).map((option) => {
     const row = doc.createElement("label");
     row.className = "rederive-option";
@@ -87,19 +159,25 @@ function mountChoiceEditor(ui: Ui, container: HTMLElement, payload: DesignPayloa
     root.append(row);
     widgets.push(mountMarkdown(ui, row, option.text, props.signal));
     input.addEventListener("change", () => {
-      if (!disposed && active && input.checked) props.onChange({ status: "ready", value: { choice: option.letter } });
+      if (input.checked) publish(option.letter);
     });
     return input;
+  });
+  // Moving the slider before picking keeps the value for the pick.
+  const slider = mountConfidence(root, props, () => {
+    const picked = inputs.find((i) => i.checked);
+    if (picked) publish(picked.value);
   });
   // The reasoning goes in the host thinking box (showThinking on the pick card), which
   // also takes dictation, so this editor has no box of its own.
   const apply = (state: PluginQuestionAnswerState, nextActive: boolean) => {
     active = nextActive;
-    const choice = readAnswer(state).choice;
+    const draft = readAnswer(state);
     for (const input of inputs) {
-      input.checked = input.value === choice;
+      input.checked = input.value === draft.choice;
       input.disabled = !nextActive;
     }
+    slider.apply(draft.confidence ?? null, nextActive);
   };
   apply(props.answer, props.active);
   return {
@@ -122,12 +200,18 @@ function mountDesignEditor(container: HTMLElement, props: PluginQuestionEditorPr
   const publish = () => {
     if (disposed || !active) return;
     const design = box.value;
-    props.onChange(design === "" ? { status: "empty" } : { status: design.trim() ? "ready" : "unready", value: { design } });
+    const confidence = slider.value();
+    const value: Record<string, string | number> = confidence === null ? { design } : { design, confidence };
+    props.onChange(design === "" ? { status: "empty" } : { status: design.trim() ? "ready" : "unready", value });
   };
   box.addEventListener("input", publish);
+  // Under the box; an empty box keeps the slider's value locally until there is text.
+  const slider = mountConfidence(root, props, publish);
   const apply = (state: PluginQuestionAnswerState, nextActive: boolean) => {
     active = nextActive;
-    setBox(box, readAnswer(state).design ?? "", nextActive);
+    const draft = readAnswer(state);
+    setBox(box, draft.design ?? "", nextActive);
+    slider.apply(draft.confidence ?? null, nextActive);
   };
   apply(props.answer, props.active);
   return {
@@ -152,7 +236,7 @@ export function registerDesignCards(ctx: PluginFrontendContext): void {
     const root = cardRoot(container);
     const answer = mountMarkdown(ctx.ui, root, answerText(props.input.payload as unknown as DesignPayload, props.answer as unknown as DesignAnswer), props.signal);
 
-    const view = gradeView(props.grading);
+    const view = gradeView(props.grading, readConfidence(props.answer));
     const badgeSlot = container.ownerDocument.createElement("span");
     (props.headerContainer ?? root).append(badgeSlot);
     const color = TONE_COLORS[view.tone];
@@ -173,7 +257,7 @@ export function registerDesignCards(ctx: PluginFrontendContext): void {
 
   ctx.registerQuestionRenderer({
     id: DESIGN_QUESTION.typeId,
-    supportedContractVersions: [DESIGN_QUESTION.contractVersion],
+    supportedContractVersions: SHOWN_CONTRACT_VERSIONS,
     // A design card saved before the pick card existed may still carry options.
     mountAnswerEditor(container, props) {
       const payload = props.input.payload as unknown as DesignPayload;
@@ -183,7 +267,7 @@ export function registerDesignCards(ctx: PluginFrontendContext): void {
   });
   ctx.registerQuestionRenderer({
     id: PICK_QUESTION.typeId,
-    supportedContractVersions: [PICK_QUESTION.contractVersion],
+    supportedContractVersions: SHOWN_CONTRACT_VERSIONS,
     mountAnswerEditor: (container, props) => mountChoiceEditor(ctx.ui, container, props.input.payload as unknown as DesignPayload, props),
     mountAnswered,
   });

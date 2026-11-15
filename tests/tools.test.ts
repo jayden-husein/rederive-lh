@@ -221,6 +221,12 @@ test("an explained problem may say it wasn't attempted: the skip guard is for sk
   assert.equal(logEntryFrom({ ...notes, explained: true }).explained, true);
 });
 
+test("log_problem passes the last answer's confidence into the entry", () => {
+  const notes = { id: "D5", struggled: "s", foundAlone: "f", didWell: "w", didOk: "o" };
+  assert.equal(logEntryFrom({ ...notes, confidence: 70 }).confidence, 70);
+  assert.equal("confidence" in logEntryFrom(notes), false);
+});
+
 test("log_problem refuses notes that describe a skip, and skip_problem defers it", async () => {
   const t = tools("chat-a");
   // The first in-app test logged a skipped D1 as finished with notes like these.

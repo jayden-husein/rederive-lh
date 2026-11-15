@@ -51,3 +51,10 @@
 
 /* Answered card: the constraint line under the answer. */
 .rederive-card .rederive-detail { color: var(--muted-foreground, #888); margin: 0; overflow-wrap: anywhere; }
+
+/* Confidence slider under the answer: caption, slider, value. Like the native quiz's. */
+.rederive-card .rederive-confidence { display: flex; align-items: center; gap: 0.625rem; flex-wrap: wrap; }
+.rederive-card .rederive-confidence > span:first-child { color: var(--muted-foreground, #888); }
+.rederive-card .rederive-confidence input { flex: 1 1 8rem; min-width: 8rem; accent-color: var(--primary, currentColor); }
+.rederive-card .rederive-confidence input:disabled { opacity: 0.7; }
+.rederive-card .rederive-confidence-value { width: 2.75rem; text-align: right; font-family: var(--font-mono, monospace); font-variant-numeric: tabular-nums; }

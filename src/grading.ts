@@ -5,7 +5,7 @@
 import type { AssistantMessage, Context } from "@earendil-works/pi-ai";
 import type { ModelCatalogResponse, PluginInferenceRequest, PluginQuestionTypeDefinition } from "learnharness-plugin-api";
 import { Type } from "typebox";
-import { DESIGN_QUESTION, PICK_QUESTION, type DesignAnswer, type DesignGrade, type DesignPayload, type Verdict } from "./design-card.ts";
+import { CONFIDENCE_STOPS, DESIGN_QUESTION, PICK_QUESTION, type DesignAnswer, type DesignGrade, type DesignPayload, type Verdict } from "./design-card.ts";
 import { hasMarkedOptions, letteredOptions, MAX_CONSTRAINTS, OPTION_LETTERS, type Decision, type DecisionOption, type StoredMap } from "./map.ts";
 import type { ChatState } from "./sessions.ts";
 import { TOOL_NAMES } from "./names.ts";
@@ -45,13 +45,27 @@ export const PickPayloadSchema = Type.Object(
   { additionalProperties: false },
 );
 
-export const DesignAnswerSchema = Type.Object({ design: Type.String({ minLength: 1, maxLength: MAX_DESIGN_CHARS }) }, { additionalProperties: false });
-export const PickAnswerSchema = Type.Object({ choice: Type.String({ minLength: 1, maxLength: 1 }) }, { additionalProperties: false });
+/** One of the slider's stops. Spelled out so the static type is the stops, not `undefined`. */
+export function confidenceSchema(options: { description?: string } = {}) {
+  const [s0, s1, s2, s3, s4, s5] = CONFIDENCE_STOPS;
+  return Type.Union([Type.Literal(s0), Type.Literal(s1), Type.Literal(s2), Type.Literal(s3), Type.Literal(s4), Type.Literal(s5)], options);
+}
+
+/** The learner's slider: how sure they are their answer holds up. The grader never sees it. */
+const ConfidenceField = Type.Optional(confidenceSchema());
+
+export const DesignAnswerSchema = Type.Object(
+  { design: Type.String({ minLength: 1, maxLength: MAX_DESIGN_CHARS }), confidence: ConfidenceField },
+  { additionalProperties: false },
+);
+export const PickAnswerSchema = Type.Object({ choice: Type.String({ minLength: 1, maxLength: 1 }), confidence: ConfidenceField }, { additionalProperties: false });
 
 const SHARED_RULES =
   "Pose it as type check on the design-decisions plan node; constraintsGiven counts a constraint added in the same message. " +
   "Only in a rederive or onboarding chat with a loaded problem; every other question stays ask_user_question. " +
-  "The grade (holds up so far / partly / breaks, with the constraint it fails) judges the problem plus the constraints given so far, not the hidden decision.";
+  "The grade (holds up so far / partly / breaks, with the constraint it fails) judges the problem plus the constraints given so far, not the hidden decision. " +
+  "The answer carries `confidence`, how sure the learner said they were (0-100%, 50 = a coin flip or untouched). " +
+  "Name a mismatch in a line: sure and it breaks, or unsure and it holds.";
 
 const DESIGN_DESCRIPTION =
   "Rederive plugin: ask the learner to describe a design on the loaded rederive problem, as a card that grades it. " +

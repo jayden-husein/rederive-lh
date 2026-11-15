@@ -3,7 +3,7 @@ import { test } from "node:test";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { ModelCatalogResponse, PluginInferenceRequest } from "learnharness-plugin-api";
 import { Value } from "typebox/value";
-import { answerText, gradeView, readGrade, type DesignGrade } from "../src/design-card.ts";
+import { answerText, gradeView, readConfidence, readGrade, snapConfidence, type DesignGrade } from "../src/design-card.ts";
 import {
   createDesignQuestionType,
   createPickQuestionType,
@@ -119,6 +119,30 @@ test("the payload schemas have no room for an answer key", () => {
   assert.equal(Value.Check(DesignAnswerSchema, { choice: "A" }), false);
   assert.equal(Value.Check(PickAnswerSchema, { choice: "A" }), true);
   assert.equal(Value.Check(PickAnswerSchema, { choice: "A", why: "x" }), false, "the reasoning goes in the host thinking box");
+});
+
+test("answers may carry a confidence, only at the native quiz's stops", () => {
+  assert.equal(Value.Check(DesignAnswerSchema, { design: "a table", confidence: 90 }), true);
+  assert.equal(Value.Check(PickAnswerSchema, { choice: "A", confidence: 0 }), true);
+  assert.equal(Value.Check(PickAnswerSchema, { choice: "A", confidence: 55 }), false);
+  assert.deepEqual([12, 40, 60, 95, 101].map(snapConfidence), [0, 30, 50, 90, 100]);
+  assert.equal(readConfidence({ design: "x", confidence: 70 }), 70);
+  assert.equal(readConfidence({ design: "x" }), null, "a version 1 answer has none");
+  assert.equal(readConfidence({ design: "x", confidence: 55 }), null);
+});
+
+test("the answered badge says how sure they were; without a confidence it's unchanged", () => {
+  const breaks = { result: { verdict: "breaks", failedAt: 1, constraint: "c1", gradedBy: "model" } };
+  assert.equal(gradeView(breaks, 90).badge, "Breaks · 90% sure");
+  assert.equal(gradeView(breaks).badge, "Breaks");
+  assert.equal(gradeView({ error: "x" }, 50).badge, "Not graded · 50% sure");
+});
+
+test("the grader never sees the confidence", async () => {
+  const { deps, requests } = fakeDeps();
+  const design = createDesignQuestionType(deps);
+  await design.gradeAnswer!(gradeCtx({ problemId: "D2", constraintsGiven: 1 }, { design: "a cache", confidence: 90 }) as never);
+  assert.doesNotMatch(JSON.stringify(requests[0]!.context), /confidence|90%/);
 });
 
 // ---------------------------------------------------------------------------

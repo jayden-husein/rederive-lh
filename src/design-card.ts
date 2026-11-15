@@ -3,11 +3,18 @@
 // so the frontend never pulls in Node or schema code.
 import { TOOL_NAMES } from "./names.ts";
 
+/**
+ * Version 2 added the confidence slider to the answer. The browser still shows version 1
+ * cards; the backend answers only the current version, as the host contract requires.
+ */
+export const CARD_CONTRACT_VERSION = 2;
+export const SHOWN_CONTRACT_VERSIONS = [1, CARD_CONTRACT_VERSION];
+
 export const DESIGN_QUESTION = {
   typeId: "rederive-design",
   label: "Your design",
   toolName: TOOL_NAMES.askDesign,
-  contractVersion: 1,
+  contractVersion: CARD_CONTRACT_VERSION,
 } as const;
 
 /** The pick card: the problem's options, with the host thinking box for the learner's reasoning. */
@@ -15,8 +22,30 @@ export const PICK_QUESTION = {
   typeId: "rederive-pick",
   label: "Your pick",
   toolName: TOOL_NAMES.askPick,
-  contractVersion: 1,
+  contractVersion: CARD_CONTRACT_VERSION,
 } as const;
+
+/**
+ * The confidence slider's stops, the same as the native quiz's (LearnHarness 0.6.x):
+ * how sure the learner is that their answer holds up, in percent. 50 is a coin flip and
+ * the resting value, so an untouched slider records 50.
+ */
+export const CONFIDENCE_STOPS = [0, 30, 50, 70, 90, 100] as const;
+export type Confidence = (typeof CONFIDENCE_STOPS)[number];
+export const DEFAULT_CONFIDENCE: Confidence = 50;
+
+/** The stop nearest to `value`. */
+export function snapConfidence(value: number): Confidence {
+  let best: Confidence = CONFIDENCE_STOPS[0];
+  for (const stop of CONFIDENCE_STOPS) if (Math.abs(stop - value) < Math.abs(best - value)) best = stop;
+  return best;
+}
+
+/** A saved confidence, or null when the answer has none (a version 1 card). */
+export function readConfidence(answer: unknown): Confidence | null {
+  const value = typeof answer === "object" && answer !== null ? (answer as { confidence?: unknown }).confidence : undefined;
+  return typeof value === "number" && (CONFIDENCE_STOPS as readonly number[]).includes(value) ? (value as Confidence) : null;
+}
 
 /** The card's input. No answer key: grading reads the map through the chat id. */
 export interface DesignPayload {
@@ -27,8 +56,11 @@ export interface DesignPayload {
   options?: { letter: string; text: string }[];
 }
 
-/** A pick or a free-text design. `why` only on picks saved before the pick card had the host thinking box. */
-export type DesignAnswer = { choice: string; why?: string } | { design: string };
+/**
+ * A pick or a free-text design, with how sure the learner is (version 2 cards). `why` only
+ * on picks saved before the pick card had the host thinking box.
+ */
+export type DesignAnswer = ({ choice: string; why?: string } | { design: string }) & { confidence?: Confidence };
 
 export type Verdict = "holds" | "partly" | "breaks";
 
@@ -61,8 +93,16 @@ export interface GradeView {
 
 const NOT_GRADED: GradeView = { badge: "Not graded", tone: "none", detail: null };
 
-/** The answered card's badge and line. Any grading error reads "Not graded": the teacher judges it. */
-export function gradeView(outcome: { result: unknown } | { error: string } | undefined): GradeView {
+/**
+ * The answered card's badge and line. Any grading error reads "Not graded": the teacher
+ * judges it. With a confidence, the badge says how sure they were: "Breaks · 90% sure".
+ */
+export function gradeView(outcome: { result: unknown } | { error: string } | undefined, confidence: Confidence | null = null): GradeView {
+  const view = verdictView(outcome);
+  return confidence === null ? view : { ...view, badge: `${view.badge} · ${confidence}% sure` };
+}
+
+function verdictView(outcome: { result: unknown } | { error: string } | undefined): GradeView {
   const grade = outcome && "result" in outcome ? readGrade(outcome.result) : null;
   if (!grade) return NOT_GRADED;
   if (grade.verdict === "holds") return { badge: "Holds up so far", tone: "good", detail: null };
