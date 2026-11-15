@@ -14,7 +14,11 @@ import type {
 import {
   answerText,
   CARD_CONTRACT_VERSION,
+  CONFIDENCE_COLORS,
+  CONFIDENCE_STOPS,
+  confidenceRailStyle,
   DEFAULT_CONFIDENCE,
+  stepConfidence,
   DESIGN_QUESTION,
   gradeView,
   PICK_QUESTION,
@@ -45,51 +49,73 @@ interface ConfidenceSlider {
   /** Null on a version 1 card, which has no slider: its saved schema has no confidence. */
   value(): Confidence | null;
   apply(value: Confidence | null, active: boolean): void;
+  /** ← / →: one stop down or up. True when it moved, so the caller can claim the key. */
+  step(delta: number): boolean;
 }
 
 /**
- * "How sure are you it holds up?", snapping to the native quiz's stops and resting at 50%.
- * `onChange` runs when the learner moves it.
+ * A copy of the native quiz's confidence row: "CONFIDENCE", a rail filled in the stop's
+ * colour with ticks at the inner stops, a thumb in that colour, and the percent. Drags snap
+ * to the stops; ←/→ move one stop. Rests at 50%. `onChange` runs when it moves.
  */
 function mountConfidence(root: HTMLElement, props: PluginQuestionEditorProps, onChange: () => void): ConfidenceSlider {
-  if (props.contractVersion < CARD_CONTRACT_VERSION) return { value: () => null, apply: () => undefined };
+  if (props.contractVersion < CARD_CONTRACT_VERSION) return { value: () => null, apply: () => undefined, step: () => false };
   const doc = root.ownerDocument;
-  const row = doc.createElement("label");
+  const row = doc.createElement("div");
   row.className = "rederive-confidence";
   const caption = doc.createElement("span");
-  caption.textContent = "How sure are you it holds up?";
+  caption.className = "rederive-confidence-label";
+  caption.textContent = "Confidence";
+  const track = doc.createElement("div");
+  track.className = "rederive-confidence-track";
+  const rail = doc.createElement("div");
+  rail.className = "rederive-confidence-rail";
+  rail.setAttribute("aria-hidden", "true");
   const input = doc.createElement("input");
   input.type = "range";
   input.min = "0";
   input.max = "100";
   input.step = "1";
-  input.title = "50% is a coin flip. Adjust with ←/→.";
+  input.setAttribute("aria-label", "Confidence — the probability your answer holds up");
+  input.title = "The probability your answer holds up — 50% is a coin flip. Adjust with ←/→.";
+  track.append(rail, input);
   const shown = doc.createElement("span");
   shown.className = "rederive-confidence-value";
-  row.append(caption, input, shown);
+  row.append(caption, track, shown);
   root.append(row);
   let current: Confidence = DEFAULT_CONFIDENCE;
+  let active = props.active;
   const show = () => {
     input.value = String(current);
+    input.style.color = CONFIDENCE_COLORS[CONFIDENCE_STOPS.indexOf(current)] ?? "";
+    Object.assign(rail.style, confidenceRailStyle(current));
     shown.textContent = `${current}%`;
     input.setAttribute("aria-valuetext", `${current} percent`);
   };
-  input.addEventListener("input", () => {
-    const next = snapConfidence(Number(input.value));
-    if (next !== current) {
-      current = next;
-      onChange();
-    }
+  const set = (next: Confidence) => {
+    const moved = next !== current;
+    current = next;
     show();
+    if (moved) onChange();
+    return moved;
+  };
+  input.addEventListener("input", () => set(snapConfidence(Number(input.value))));
+  // A step-1 range would move 50 → 51 and snap straight back: step by stops instead.
+  input.addEventListener("keydown", (event) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    if (active) set(stepConfidence(current, event.key === "ArrowRight" ? 1 : -1));
   });
   show();
   return {
     value: () => current,
-    apply: (value, active) => {
+    apply: (value, nextActive) => {
+      active = nextActive;
       current = value ?? current;
-      input.disabled = !active;
+      input.disabled = !nextActive;
       show();
     },
+    step: (delta) => active && set(stepConfidence(current, delta)),
   };
 }
 
@@ -167,6 +193,12 @@ function mountChoiceEditor(ui: Ui, container: HTMLElement, payload: DesignPayloa
   const slider = mountConfidence(root, props, () => {
     const picked = inputs.find((i) => i.checked);
     if (picked) publish(picked.value);
+  });
+  // As in the native quiz, ← / → on the options move the confidence; ↑ / ↓ still pick.
+  root.addEventListener("keydown", (event) => {
+    if ((event.key !== "ArrowLeft" && event.key !== "ArrowRight") || !inputs.includes(event.target as HTMLInputElement)) return;
+    event.preventDefault();
+    slider.step(event.key === "ArrowRight" ? 1 : -1);
   });
   // The reasoning goes in the host thinking box (showThinking on the pick card), which
   // also takes dictation, so this editor has no box of its own.

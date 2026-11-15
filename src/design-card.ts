@@ -34,6 +34,30 @@ export const CONFIDENCE_STOPS = [0, 30, 50, 70, 90, 100] as const;
 export type Confidence = (typeof CONFIDENCE_STOPS)[number];
 export const DEFAULT_CONFIDENCE: Confidence = 50;
 
+/** The native slider's colour per stop, red at 0% to green at 100% (LearnHarness 0.6.x). */
+export const CONFIDENCE_COLORS = ["#ef4444", "#f97316", "#eab308", "#84cc16", "#22c55e", "#10b981"] as const;
+
+const TICK = "color-mix(in oklab, var(--foreground) 35%, transparent)";
+const TICKS = [30, 50, 70, 90];
+
+/** The rail behind the slider, as the native quiz draws it: filled up to `stop` in its colour, ticks at the inner stops. */
+export function confidenceRailStyle(stop: Confidence): Record<string, string> {
+  const color = CONFIDENCE_COLORS[CONFIDENCE_STOPS.indexOf(stop)] ?? CONFIDENCE_COLORS[2];
+  return {
+    backgroundColor: "var(--background)",
+    backgroundImage: [`linear-gradient(90deg, ${color} 0%, ${color} ${stop}%, transparent ${stop}%, transparent 100%)`, ...TICKS.map(() => `linear-gradient(90deg, ${TICK}, ${TICK})`)].join(", "),
+    backgroundSize: ["100% 100%", ...TICKS.map(() => "1px 100%")].join(", "),
+    backgroundPosition: ["0 0", ...TICKS.map((t) => `${t}% 0`)].join(", "),
+    backgroundRepeat: "no-repeat",
+  };
+}
+
+/** The stop `delta` stops away from `stop`, held at the ends (← and → on the native slider). */
+export function stepConfidence(stop: Confidence, delta: number): Confidence {
+  const at = CONFIDENCE_STOPS.indexOf(stop);
+  return CONFIDENCE_STOPS[Math.min(CONFIDENCE_STOPS.length - 1, Math.max(0, at + delta))]!;
+}
+
 /** The stop nearest to `value`. */
 export function snapConfidence(value: number): Confidence {
   let best: Confidence = CONFIDENCE_STOPS[0];

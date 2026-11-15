@@ -52,9 +52,54 @@
 /* Answered card: the constraint line under the answer. */
 .rederive-card .rederive-detail { color: var(--muted-foreground, #888); margin: 0; overflow-wrap: anywhere; }
 
-/* Confidence slider under the answer: caption, slider, value. Like the native quiz's. */
-.rederive-card .rederive-confidence { display: flex; align-items: center; gap: 0.625rem; flex-wrap: wrap; }
-.rederive-card .rederive-confidence > span:first-child { color: var(--muted-foreground, #888); }
-.rederive-card .rederive-confidence input { flex: 1 1 8rem; min-width: 8rem; accent-color: var(--primary, currentColor); }
-.rederive-card .rederive-confidence input:disabled { opacity: 0.7; }
-.rederive-card .rederive-confidence-value { width: 2.75rem; text-align: right; font-family: var(--font-mono, monospace); font-variant-numeric: tabular-nums; }
+/* Confidence row, copied from the native quiz: label, rail with a coloured fill and ticks
+   (drawn inline from confidenceRailStyle), a round thumb in the stop's colour, the percent. */
+.rederive-card .rederive-confidence { display: flex; align-items: center; gap: 0.75rem; padding-top: 0.625rem; border-top: 1px solid color-mix(in oklab, var(--border, #8886) 60%, transparent); }
+.rederive-card .rederive-confidence-label {
+  flex: none;
+  font-family: var(--font-ui, inherit);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  color: var(--muted-foreground, #888);
+}
+.rederive-card .rederive-confidence-track { position: relative; height: 1rem; min-width: 0; flex: 1 1 0%; }
+.rederive-card .rederive-confidence-rail {
+  pointer-events: none;
+  position: absolute;
+  top: 50%;
+  left: 0.5rem;
+  right: 0.5rem;
+  height: 0.375rem;
+  transform: translateY(-50%);
+  border-radius: 9999px;
+  border: 1px solid var(--border, #8886);
+}
+.rederive-card .rederive-confidence-track input {
+  position: absolute;
+  inset: 0;
+  height: 1rem;
+  width: 100%;
+  margin: 0;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  outline: none;
+}
+.rederive-card .rederive-confidence-track input:disabled { cursor: default; }
+.rederive-card .rederive-confidence-track input::-webkit-slider-runnable-track { height: 1rem; background: transparent; }
+.rederive-card .rederive-confidence-track input::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 1rem; height: 1rem; border-radius: 9999px; background: currentColor; }
+.rederive-card .rederive-confidence-track input::-moz-range-track { height: 1rem; background: transparent; }
+.rederive-card .rederive-confidence-track input::-moz-range-thumb { appearance: none; width: 1rem; height: 1rem; border-radius: 9999px; border: 0; background: currentColor; }
+.rederive-card .rederive-confidence-value {
+  width: 2.25rem;
+  flex: none;
+  text-align: right;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-variant-numeric: tabular-nums;
+}

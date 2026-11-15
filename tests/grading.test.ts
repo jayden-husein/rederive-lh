@@ -3,7 +3,7 @@ import { test } from "node:test";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { ModelCatalogResponse, PluginInferenceRequest } from "learnharness-plugin-api";
 import { Value } from "typebox/value";
-import { answerText, gradeView, readConfidence, readGrade, snapConfidence, type DesignGrade } from "../src/design-card.ts";
+import { answerText, CONFIDENCE_COLORS, confidenceRailStyle, gradeView, readConfidence, readGrade, snapConfidence, stepConfidence, type DesignGrade } from "../src/design-card.ts";
 import {
   createDesignQuestionType,
   createPickQuestionType,
@@ -129,6 +129,14 @@ test("answers may carry a confidence, only at the native quiz's stops", () => {
   assert.equal(readConfidence({ design: "x", confidence: 70 }), 70);
   assert.equal(readConfidence({ design: "x" }), null, "a version 1 answer has none");
   assert.equal(readConfidence({ design: "x", confidence: 55 }), null);
+});
+
+test("the slider steps one stop with ←/→, held at the ends, and colours its rail like the native one", () => {
+  assert.deepEqual([stepConfidence(50, 1), stepConfidence(50, -1), stepConfidence(100, 1), stepConfidence(0, -1)], [70, 30, 100, 0]);
+  const rail = confidenceRailStyle(90);
+  assert.match(rail.backgroundImage!, /^linear-gradient\(90deg, #22c55e 0%, #22c55e 90%, transparent 90%/);
+  assert.equal(rail.backgroundPosition, "0 0, 30% 0, 50% 0, 70% 0, 90% 0");
+  assert.equal(CONFIDENCE_COLORS.length, 6);
 });
 
 test("the answered badge says how sure they were; without a confidence it's unchanged", () => {
