@@ -213,11 +213,14 @@ function openLogDialog(ctx: PluginFrontendContext, chatId: string): void {
         const heading = doc.createElement("h2");
         heading.textContent = "Rederive log";
         const where = doc.createElement("p");
-        // Long Windows paths have no spaces to break at.
-        where.style.overflowWrap = "anywhere";
+        // Long Windows paths have no spaces to break at. Small and muted, like a native caption.
+        where.style.cssText = "overflow-wrap:anywhere;font-size:0.875rem;color:var(--muted-foreground)";
         const body = doc.createElement("pre");
-        // Plain weight: the log showed bold in the dialog's default styling (in-app test, 2026-11-15).
-        body.style.cssText = "white-space:pre-wrap;overflow-wrap:anywhere;max-height:60vh;overflow:auto;margin:0;font-weight:400";
+        // The dialog inherits the UI font (JetBrains Mono), which read as bold for a page of notes
+        // (in-app test, 2026-11-15): the log uses the prose font the chat's text uses.
+        body.style.cssText =
+          "white-space:pre-wrap;overflow-wrap:anywhere;max-height:60vh;overflow:auto;margin:0;font-weight:400;" +
+          "font-family:var(--font-prose);font-size:var(--lh-prose-size);line-height:var(--lh-prose-leading)";
         const buttons = doc.createElement("div");
         buttons.style.cssText = "display:flex;gap:8px;justify-content:flex-end;margin-top:8px";
         const copySlot = doc.createElement("div");
