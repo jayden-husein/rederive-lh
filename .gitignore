@@ -6,3 +6,13 @@ dist/
 .sdk/
 .scratch/
 .claude/settings.local.json
+release/
+
+# AI-assisted development files: kept locally, not published.
+.claude/settings.json
+CLAUDE.md
+HANDOFF.md
+docs/history.md
+docs/host-facts.md
+scripts/hooks/
+tests/hooks.test.ts

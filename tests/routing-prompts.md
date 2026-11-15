@@ -2,7 +2,7 @@
 
 Fifteen opening messages, each tagged with the mode the prober should pick:
 5 rederive, 5 onboarding, 5 normal. The tricky ones are written to pull
-toward the wrong mode; the notes say how. Target (HANDOFF §8): at least 13/15.
+toward the wrong mode; the notes say how. Target: at least 13/15.
 
 ## Setup
 

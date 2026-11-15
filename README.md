@@ -63,21 +63,35 @@ plugin's data folder.
 
 ## Install
 
-Requirements: Windows, LearnHarness 0.6.1 or later, Node 22.18 or later, npm and
-Git for Windows on `PATH`.
+Requirements: LearnHarness 0.6.1 or later on Windows, and
+[Git for Windows](https://git-scm.com/download/win) on `PATH` (the plugin reads
+repo history with it and clones repos given as URLs).
 
-1. In LearnHarness, open **Settings → Community plugins** to find the plugins
-   directory, and clone this repo into it as `rederive-lh`:
+1. Download `rederive-lh-<version>.zip` from the
+   [latest release](../../releases/latest).
+2. In LearnHarness, open **Settings → Community plugins** to see where the
+   plugins directory is. Create a folder `rederive-lh\dist` inside it and extract
+   the zip there, so you end up with
+   `<plugins directory>\rederive-lh\dist\manifest.json`.
+3. Back in **Settings → Community plugins**, click **Refresh**, then **Enable**
+   Rederive.
+4. Make sure a cheap model slot is set in LearnHarness. The map worker and the
+   free-text grader use it.
 
-   ```bash
-   git clone <this repo's URL> "<plugins directory>\rederive-lh"
-   ```
+To update, replace the files in `rederive-lh\dist` with the new zip's and restart
+LearnHarness. The plugin keeps its maps, logs and settings in
+`rederive-lh\data`, which updates don't touch.
 
-2. From the same settings page, click **Download authoring skill** and extract it
-   to `rederive-lh\.claude\skills\learnharness-plugins\`. The build needs the SDK
-   types it contains.
-3. In `rederive-lh`, copy the SDK types, install and build. In PowerShell, use
-   `npm.cmd` if script execution is disabled:
+### Build from source
+
+Needs Node 22.18 or later and npm as well.
+
+1. Clone this repo into the plugins directory as `rederive-lh`.
+2. In **Settings → Community plugins**, click **Download authoring skill** and
+   extract it to `rederive-lh\.claude\skills\learnharness-plugins\`. The build
+   needs the SDK types it contains.
+3. In `rederive-lh`, run these (in PowerShell, use `npm.cmd` if script execution
+   is disabled):
 
    ```bash
    npm.cmd run sdk
@@ -91,12 +105,8 @@ Git for Windows on `PATH`.
    npm.cmd run build
    ```
 
-4. Back in **Settings → Community plugins**, click **Refresh**, then **Enable**
-   Rederive.
-5. Make sure a cheap model slot is set in LearnHarness. The map worker and the
-   free-text grader use it.
-
-After changing the code, rebuild and restart LearnHarness. There is no hot reload.
+4. Refresh and Enable as above. After changing the code, rebuild and restart
+   LearnHarness; there is no hot reload.
 
 ## Usage
 
@@ -136,6 +146,7 @@ scripts:
 | Script | What it does |
 |---|---|
 | `build` | Bundles `src\` into `dist\` (the installed runtime package). |
+| `package` | Builds, then zips `dist\` into `release\rederive-lh-<version>.zip` for a GitHub release. |
 | `summary -- <repo>` | Prints the history and structure summary the map worker starts from. |
 | `routing-report` | Scores the routing eval in `tests\routing-prompts.md`. |
 | `transcript -- latest` | Prints a LearnHarness chat compactly (`--since 30m`, `--tail 40`, `--grep`). |
@@ -144,8 +155,8 @@ scripts:
 
 Layout: `src\backend.ts` registers the instructions, tools, map worker and
 grader; `src\main.ts` registers the settings, top-bar actions, tool renderers and
-the design cards. `HANDOFF.md` is the design spec and `docs\history.md` records how
-each build step was tested in the app.
+the design cards. The scripts that read chats (`transcript`, `leak-check`,
+`render-diagrams`, `routing-report`) only read LearnHarness's learning data.
 
 ## Credits and license
 
