@@ -3,7 +3,6 @@ ref/
 data/
 node_modules/
 dist/
-.sdk/
 .scratch/
 .claude/settings.local.json
 release/

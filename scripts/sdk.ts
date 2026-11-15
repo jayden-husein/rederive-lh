@@ -1,5 +1,5 @@
-// Copies the LearnHarness plugin SDK types from the authoring skill into .sdk/.
-// Run before `npm install` on a fresh clone: package.json depends on file:./.sdk.
+// Refreshes the LearnHarness plugin SDK types in .sdk/ (tracked in git; package.json
+// depends on file:./.sdk) from a newer authoring skill extracted to .claude/skills/.
 import { cpSync, existsSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

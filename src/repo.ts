@@ -3,7 +3,8 @@
 // code from, the learner's repo.
 import { createHash, randomBytes } from "node:crypto";
 import { mkdir, open, readdir, rename, rm, stat } from "node:fs/promises";
-import { isAbsolute, join, resolve, win32 } from "node:path";
+import { homedir } from "node:os";
+import { isAbsolute, join, resolve } from "node:path";
 import { GitError, isGitWorkTree, runGit } from "./git.ts";
 
 export type RepoSource =
@@ -36,10 +37,13 @@ export function parseSource(raw: string): RepoSource {
         "Use the UNC form instead, e.g. \\\\wsl.localhost\\<distro>" + source.replace(/\//g, "\\") + ".",
     );
   }
-  if (!isAbsolute(source) && !win32.isAbsolute(source)) {
+  // "~/code/x" (as typed in macOS and Linux shells) means the home folder.
+  const path = /^~(?=$|[\\/])/.test(source) ? join(homedir(), source.slice(1)) : source;
+  // node:path is platform-specific: drive and UNC paths on Windows, "/" paths elsewhere.
+  if (!isAbsolute(path)) {
     throw new Error(`"${source}" is a relative path. Give the full path to the repo folder.`);
   }
-  return { kind: "local", path: resolve(source) };
+  return { kind: "local", path: resolve(path) };
 }
 
 function normalizeUrl(url: string): string {

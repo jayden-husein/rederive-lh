@@ -59,7 +59,7 @@ const OpenRepoParameters = Type.Object(
     source: Type.String({
       minLength: 1,
       maxLength: 1000,
-      description: "Absolute local folder path (Windows or \\\\wsl.localhost\\... UNC path) or an https:// / ssh:// git URL.",
+      description: "Absolute local folder path (on Windows, WSL repos as \\\\wsl.localhost\\<distro>\\...) or an https:// / ssh:// git URL.",
     }),
   },
   { additionalProperties: false },

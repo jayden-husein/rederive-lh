@@ -57,66 +57,64 @@ If your goal is unclear, you're asked once: do you want to work in this code, or
 explain why it's designed this way? You can say "switch modes", "rederive this" or
 "just explain it" at any time, and that always wins.
 
-Repos can be a local path (including WSL paths such as
-`\\wsl.localhost\Ubuntu\home\you\project`) or a git URL, which is cloned into the
-plugin's data folder.
+Repos can be a full local path or a git URL, which is cloned into the plugin's
+data folder. On Windows, repos inside WSL work through their
+`\\wsl.localhost\<distro>\...` path.
 
 ## Install
 
-Requirements: LearnHarness 0.6.1 or later on Windows, and
-[Git for Windows](https://git-scm.com/download/win) on `PATH` (the plugin reads
-repo history with it and clones repos given as URLs).
+Requirements: LearnHarness 0.6.1 or later, and `git` on `PATH` (the plugin reads
+repo history with it and clones repos given as URLs). On Windows, install
+[Git for Windows](https://git-scm.com/download/win); on macOS, Git comes with the
+Xcode command line tools (`xcode-select --install`); on Linux, use your package
+manager.
+
+Tested in the app on Windows. The tests also run on macOS and Linux in CI, but
+nobody has tried the plugin in LearnHarness there yet: issues welcome.
 
 1. Download `rederive-lh-<version>.zip` from the
    [latest release](../../releases/latest).
 2. In LearnHarness, open **Settings → Community plugins** to see where the
-   plugins directory is. Create a folder `rederive-lh\dist` inside it and extract
+   plugins directory is. Create a folder `rederive-lh/dist` inside it and extract
    the zip there, so you end up with
-   `<plugins directory>\rederive-lh\dist\manifest.json`.
+   `<plugins directory>/rederive-lh/dist/manifest.json`.
 3. Back in **Settings → Community plugins**, click **Refresh**, then **Enable**
    Rederive.
 4. Make sure a cheap model slot is set in LearnHarness. The map worker and the
    free-text grader use it.
 
-To update, replace the files in `rederive-lh\dist` with the new zip's and restart
+To update, replace the files in `rederive-lh/dist` with the new zip's and restart
 LearnHarness. The plugin keeps its maps, logs and settings in
-`rederive-lh\data`, which updates don't touch.
+`rederive-lh/data`, which updates don't touch.
 
 ### Build from source
 
 Needs Node 22.18 or later and npm as well.
 
 1. Clone this repo into the plugins directory as `rederive-lh`.
-2. In **Settings → Community plugins**, click **Download authoring skill** and
-   extract it to `rederive-lh\.claude\skills\learnharness-plugins\`. The build
-   needs the SDK types it contains.
-3. In `rederive-lh`, run these (in PowerShell, use `npm.cmd` if script execution
-   is disabled):
+2. In `rederive-lh`, install and build (in Windows PowerShell, use `npm.cmd` if
+   script execution is disabled):
 
    ```bash
-   npm.cmd run sdk
+   npm install
    ```
 
    ```bash
-   npm.cmd install
+   npm run build
    ```
 
-   ```bash
-   npm.cmd run build
-   ```
-
-4. Refresh and Enable as above. After changing the code, rebuild and restart
+3. Refresh and Enable as above. After changing the code, rebuild and restart
    LearnHarness; there is no hot reload.
 
 ## Usage
 
 Start a teaching session and talk about a repo: "I built this search engine with
-AI and can't explain it, it's at `\\wsl.localhost\Ubuntu\home\me\tse`." The
+AI and can't explain it, it's at `~/code/tse`." The
 prober picks the mode, opens the repo, starts the map build and hands over to the
 tutor.
 
 Or click **Rederive this repo** in the top bar of a teaching session
-(`Ctrl+Shift+R`), enter a path or URL and start fresh.
+(`Ctrl+Shift+R`, or `Cmd+Shift+R` on macOS), enter a path or URL and start fresh.
 
 **Settings** (Settings → Community plugins → Rederive):
 

@@ -124,7 +124,7 @@ function openStartDialog(ctx: PluginFrontendContext, chatId: string, initialSour
           type: "text",
           key: "source",
           label: "Repo",
-          description: "Folder path (Windows or \\\\wsl.localhost\\…) or git URL. This chat switches to rederive mode.",
+          description: "Full folder path or git URL. This chat switches to rederive mode.",
           value: source,
           disabled,
           validate: tooLong,

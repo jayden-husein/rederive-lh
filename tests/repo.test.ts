@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { after, before, test } from "node:test";
 import { GitError, isGitWorkTree, runGit } from "../src/git.ts";
@@ -60,6 +61,18 @@ test("parseSource accepts absolute Windows and UNC paths", { skip: process.platf
   assert.equal(unc.kind, "local");
   assert.equal(unc.kind === "local" && unc.path, "\\\\wsl.localhost\\Ubuntu\\home\\me\\tiny");
   assert.throws(() => parseSource("/home/me/tiny"), /wsl\.localhost/);
+});
+
+test("parseSource accepts absolute POSIX paths on macOS and Linux", { skip: process.platform === "win32" }, () => {
+  assert.deepEqual(parseSource("/home/me/tiny"), { kind: "local", path: "/home/me/tiny" });
+  assert.deepEqual(parseSource("/Users/me/code/tiny/"), { kind: "local", path: "/Users/me/code/tiny" });
+  assert.throws(() => parseSource("C:\\code\\tiny"), /relative path/);
+});
+
+test("parseSource expands ~ to the home folder", () => {
+  assert.deepEqual(parseSource("~/code/tiny"), { kind: "local", path: join(homedir(), "code", "tiny") });
+  assert.deepEqual(parseSource("~"), { kind: "local", path: resolve(homedir()) });
+  assert.throws(() => parseSource("~other/tiny"), /relative path/);
 });
 
 test("parseSource rejects relative paths", () => {
