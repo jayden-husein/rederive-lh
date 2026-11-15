@@ -420,6 +420,16 @@ Git history has the code.
    concept checks go on the native quiz (`type: "check"`), which finishes
    dictation as normal quizzes do.
 
+10. **README.** What it does, install, modes, screenshots placeholder, credits.
+    Written 2026-11-15 from the code (settings, actions, tools, scripts) and this
+    file. Install steps cover the SDK setup (`npm run sdk` needs the authoring
+    skill extracted first), `npm.cmd` for PowerShell, and the cheap model slot.
+    Screenshots are an HTML comment listing suggested shots plus a placeholder
+    line. Inline review: every claim checked against `src\` (mode labels,
+    `mod+shift+r`, "Show rederive log", summary usage); `npm run check` passes
+    (212 tests). `LICENSE` added: the official AGPL-3.0 text from gnu.org,
+    unmodified. Open: the clone URL is a placeholder (no git remote).
+
 ## Skills used per step
 
 | Step | Skills | What for |

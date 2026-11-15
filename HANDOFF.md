@@ -309,7 +309,7 @@ storing `{ defaultMode: "ask" | "auto" | "always" | "never", defaultRepo }`.
 
 ## 7. Build order (one step per session; stop for user testing after each)
 
-Steps 1–9 are done. What each asked for, the in-app findings and their fixes
+Steps 1–10 are done (step 10 awaits the user's read-through). What each asked for, the in-app findings and their fixes
 are in `docs\history.md`: read it when a step refers to earlier findings.
 
 1. **Scaffold.**
@@ -329,7 +329,8 @@ are in `docs\history.md`: read it when a step refers to earlier findings.
 
 `learnharness-plugins` is required every step (see CLAUDE.md) and stays the
 authority on the plugin API. The `mattpocock-skills` plugin (installed at user
-scope) covers process. Next: step 10 (README). Rows for finished steps
+scope) covers process. All build steps are written; open items for step 10
+are at its end in `docs\history.md`. Rows for finished steps
 are in `docs\history.md`.
 
 | Step | Skills | What for |
