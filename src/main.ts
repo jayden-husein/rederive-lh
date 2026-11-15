@@ -216,7 +216,8 @@ function openLogDialog(ctx: PluginFrontendContext, chatId: string): void {
         // Long Windows paths have no spaces to break at.
         where.style.overflowWrap = "anywhere";
         const body = doc.createElement("pre");
-        body.style.cssText = "white-space:pre-wrap;overflow-wrap:anywhere;max-height:60vh;overflow:auto;margin:0";
+        // Plain weight: the log showed bold in the dialog's default styling (in-app test, 2026-11-15).
+        body.style.cssText = "white-space:pre-wrap;overflow-wrap:anywhere;max-height:60vh;overflow:auto;margin:0;font-weight:400";
         const buttons = doc.createElement("div");
         buttons.style.cssText = "display:flex;gap:8px;justify-content:flex-end;margin-top:8px";
         const copySlot = doc.createElement("div");
