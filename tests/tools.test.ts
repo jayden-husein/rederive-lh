@@ -6,7 +6,7 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { ModelCatalogResponse, PluginTaskSnapshot, PluginToolContext } from "learnharness-plugin-api";
 import { MapStore } from "../src/map-store.ts";
 import { SessionStore } from "../src/sessions.ts";
-import { buildMapDefinition, createTools, openRepoForChat, type ToolDeps } from "../src/tools.ts";
+import { buildMapDefinition, createTools, logEntryFrom, openRepoForChat, type ToolDeps } from "../src/tools.ts";
 import { BUILD_LIMITS } from "../src/worker.ts";
 import { makeGitRepo, removeDir, SAMPLE_README, sampleMapResult, succeededTask, tempDir } from "./helpers.ts";
 
@@ -208,6 +208,14 @@ test("a new chat opening a repo with an earlier chat's map is told to ask contin
   // Reopening the same repo in the same chat doesn't ask again.
   const same = await tools("chat-new").openRepo.execute("2", { source: repo });
   assert.equal(same.details.earlierMap, undefined);
+});
+
+test("an explained problem may say it wasn't attempted: the skip guard is for skips", () => {
+  // Step 9's last test: after the switch to plain explanation, "Not attempted" with
+  // explained: true was refused as a skip.
+  const notes = { id: "D5", struggled: "Not attempted; he switched to plain explanation.", foundAlone: "-", didWell: "-", didOk: "-" };
+  assert.throws(() => logEntryFrom(notes), /describe a skip/);
+  assert.equal(logEntryFrom({ ...notes, explained: true }).explained, true);
 });
 
 test("log_problem refuses notes that describe a skip, and skip_problem defers it", async () => {

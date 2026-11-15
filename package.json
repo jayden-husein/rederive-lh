@@ -18,6 +18,7 @@
     "routing-report": "node scripts/routing-report.ts",
     "transcript": "node scripts/transcript.ts",
     "leak-check": "node scripts/leak-check.ts",
+    "render-diagrams": "node scripts/render-diagrams.ts",
     "check": "npm run typecheck && npm test",
     "prepare": "git config core.hooksPath .githooks"
   },

@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { test } from "node:test";
 import { findLeaks, leakTerms } from "../scripts/leaks.ts";
-import { type Chat, renderChat } from "../scripts/transcripts.ts";
+import { type Chat, readChat, renderChat } from "../scripts/transcripts.ts";
+import { removeDir, tempDir } from "./helpers.ts";
 import type { DecisionMapResult } from "../src/map.ts";
 
 const decision = (id: string, technique: string, inThisCode: string, problem: string) => ({
@@ -109,6 +112,20 @@ test("card text and handoffs count as shown; the plugin's own and file tools don
   );
 });
 
+test("everyday words stay hints even in pairs; naming a technique with 'you rederived it' is a leak", () => {
+  // Step 9 tests: "read" and "write" (one decision's technique) flagged a LEAK in plain
+  // teaching, while the real reveal ("...you rederived it") was buried among them.
+  const everyday: DecisionMapResult = {
+    rootProblem: "Volunteers manage the people at their shelter.",
+    decisions: [decision("D5", "Read write split with shared query cache", "server/cache.ts", "Keep the app fast.")],
+  };
+  const plain: Chat = { messages: [say("Every volunteer read and write must stay inside their shelter.")] };
+  assert.deepEqual(findLeaks(plain, everyday).map((f) => `${f.severity}:${f.term}`), ["hint:read", "hint:write"]);
+  // One distinctive word plus a claim they derived it: the reveal.
+  const reveal: Chat = { messages: [say("That's a breadth-first walk, and you rederived it!")] };
+  assert.deepEqual(findLeaks(reveal, map).map((f) => `${f.severity}:${f.term}`), ["leak:breadth-first"]);
+});
+
 test("the transcript view is one line per event, cut to width, optionally from a tool", () => {
   const chat: Chat = {
     messages: [
@@ -122,4 +139,26 @@ test("the transcript view is one line per event, cut to width, optionally from a
   assert.deepEqual(renderChat(chat, { width: 10, from: "probe_done" }), ["CALL  prob…", "  ->  prob…", "TEXT  a lo…"]);
   // grep keeps only matching lines, uncut, whatever the width.
   assert.deepEqual(renderChat(chat, { width: 10, grep: "LONG" }), ["TEXT  a long message"]);
+});
+
+test("since keeps only messages at or after a time, so a continued chat shows just the new run", () => {
+  const chat: Chat = {
+    messages: [
+      { ...say("old run"), timestamp: 1000 },
+      { role: "user", content: "new run", timestamp: 2000 },
+      { ...say("reply"), timestamp: 3000 },
+    ],
+  };
+  assert.deepEqual(renderChat(chat, { width: 0, since: 2000 }), ["USER  new run", "TEXT  reply"]);
+});
+
+test("latest is the most recently updated chat, so a continued test chat wins over a newer idle one", async () => {
+  const dir = tempDir("chats");
+  try {
+    writeFileSync(join(dir, "a.json"), JSON.stringify({ id: "a", createdAt: "2026-11-15T19:00:00Z", updatedAt: "2026-11-15T21:00:00Z" }));
+    writeFileSync(join(dir, "b.json"), JSON.stringify({ id: "b", createdAt: "2026-11-15T20:00:00Z", updatedAt: "2026-11-15T20:05:00Z" }));
+    assert.equal((await readChat(dir, "latest")).id, "a");
+  } finally {
+    removeDir(dir);
+  }
 });

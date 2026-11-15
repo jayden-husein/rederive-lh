@@ -29,6 +29,15 @@ const STOP = new Set(
   ("with then from into over onto that this than each when where which while before after until plus also using based like plain text data file files test tests round trip copy " +
     "code decision decisions design problem problems constraint constraints mode progress background learner").split(" "),
 );
+// Everyday words a technique name can contain ("read write split", "shared secret"): a
+// tutor says them in plain teaching, so they stay hints and never make a pair a leak.
+const COMMON = new Set(
+  ("read reads write writes shared share query queries store check list request requests response work works call calls send sends " +
+    "data table tables user users page pages time open close start stop find search filter value values name names order step steps " +
+    "single first last only same each every value state status").split(" "),
+);
+// A claim the learner derived it; next to an unreached technique word, that is the reveal.
+const DERIVED_CLAIM = /\byou (re)?derived (it|this|that)\b|\byou rederived\b/i;
 // Folder names that say nothing about the design.
 const GENERIC_PARTS = new Set(["src", "lib", "libs", "common", "test", "tests", "util", "utils", "server", "client", "app", "docs"]);
 // Tools whose arguments the learner never sees (the plugin's own, and the file tools).
@@ -92,11 +101,14 @@ export function findLeaks(chat: Chat, map: DecisionMapResult): Finding[] {
       const at = text.toLowerCase().indexOf(term);
       const excerpt = text.slice(Math.max(0, at - 60), at + term.length + 60).replace(/\s+/g, " ");
       found.push({ kind, term, decisions, source, excerpt });
-      if (kind === "technique") for (const id of decisions) techniqueHits.set(id, (techniqueHits.get(id) ?? 0) + 1);
+      if (kind === "technique" && !COMMON.has(term)) for (const id of decisions) techniqueHits.set(id, (techniqueHits.get(id) ?? 0) + 1);
     }
-    // One technique word is often an ordinary word ("sort out"); two from one decision name it.
+    // One technique word is often an ordinary word ("sort out"); two distinctive ones from
+    // one decision name it, and so does one next to "you rederived it".
+    const claimsDerived = DERIVED_CLAIM.test(text);
     for (const f of found) {
-      const leak = f.kind === "technique" && f.decisions.some((id) => (techniqueHits.get(id) ?? 0) >= 2);
+      const distinctive = f.kind === "technique" && !COMMON.has(f.term);
+      const leak = distinctive && (claimsDerived || f.decisions.some((id) => (techniqueHits.get(id) ?? 0) >= 2));
       findings.push({ severity: leak ? "leak" : "hint", ...f });
     }
   };

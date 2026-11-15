@@ -405,7 +405,17 @@ Git history has the code.
    not the finish: ask why if the thinking doesn't say, keep adding
    constraints, name the technique only after the last one.
 
-   **Step 9 is done (2026-11-15).** Dictation didn't finish on submit on a concept check: that card is
+   **Step 9 is done (2026-11-15).**
+   Retro fixes (2026-11-15): `npm run render-diagrams` renders a chat's
+   Mermaid diagrams for the browser pane; `docs\host-facts.md` holds what the
+   app does that the skill doesn't say (native cards, dictation, Mermaid,
+   styling limits); `transcript` picks the latest *updated* chat and takes
+   `--since` / `--tail`; leak-check keeps everyday technique words as hints
+   and flags "you rederived it" next to a technique; a project PreToolUse hook
+   (`scripts\hooks\`) refuses inline `node -e` file edits; the review row in
+   HANDOFF runs two subagents once per step. Also fixed: `explained: true`
+   logs were refused when the notes said "not attempted" (seen after the
+   switch to plain explanation in the last test). Dictation didn't finish on submit on a concept check: that card is
    the host's `ask_user_question`, outside the plugin. Decided with the user:
    concept checks go on the native quiz (`type: "check"`), which finishes
    dictation as normal quizzes do.

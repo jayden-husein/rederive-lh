@@ -615,10 +615,12 @@ export interface LogProblemDetails {
  */
 const SKIP_NOTE = /\b(not attempted|didn't attempt|did not attempt|skipped (it|this|the problem)|without a design)\b/i;
 
-function logEntryFrom(input: Static<typeof LogProblemParameters>): LogEntry {
+/** The log entry for a finished problem. Exported for tests. */
+export function logEntryFrom(input: Static<typeof LogProblemParameters>): LogEntry {
   const notes = [input.struggled, input.foundAlone, input.didWell, input.didOk];
   if (notes.some((n) => !n.trim())) throw new Error("Fill in every note for a finished problem.");
-  if (notes.some((n) => SKIP_NOTE.test(n))) {
+  // An explained problem may honestly say it wasn't attempted; it is done, not skipped.
+  if (!input.explained && notes.some((n) => SKIP_NOTE.test(n))) {
     throw new Error(`These notes describe a skip. If the learner skipped ${input.id} without a design, call ${TOOL_NAMES.skipProblem} instead.`);
   }
   return {

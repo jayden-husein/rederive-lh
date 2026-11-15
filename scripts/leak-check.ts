@@ -2,9 +2,10 @@
 // Usage: npm run leak-check -- [chatId|latest] [--map <map.json>] [--chats <folder>]
 // The map defaults to the one for the chat's repo in this plugin's data/. A rebuilt map
 // may differ from the one the chat used; pass --map to check against another.
-// LEAK: two or more technique words of one decision in one piece of output (exit code 1).
-// HINT: one technique word or a code location, to judge by hand: an ordinary word
-// ("sort out"), or folders the learner's own repo may name fine.
+// LEAK: two or more distinctive technique words of one decision in one piece of output,
+// or one next to "you rederived it" (exit code 1).
+// HINT: one technique word, an everyday one ("read", "shared") or a code location, to
+// judge by hand: an ordinary word, or folders the learner's own repo may name fine.
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseArgs } from "node:util";

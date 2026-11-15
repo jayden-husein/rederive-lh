@@ -24,10 +24,13 @@ export interface Message {
   toolCallId?: string;
   toolName?: string;
   isError?: boolean;
+  /** Milliseconds since the epoch. */
+  timestamp?: number;
 }
 export interface Chat {
   id?: string;
   createdAt?: string;
+  updatedAt?: string;
   messages?: Message[];
 }
 
@@ -56,14 +59,14 @@ export async function readChats(chatsDir: string): Promise<Chat[]> {
   return chats;
 }
 
-/** One chat by id, or the most recently created one for "latest". */
+/** One chat by id, or the most recently updated one for "latest" (a test often continues an old chat). */
 export async function readChat(chatsDir: string, idOrLatest: string): Promise<Chat> {
   if (idOrLatest !== "latest") {
     const id = idOrLatest.replace(/\.json$/, "");
     return JSON.parse(await readFile(join(chatsDir, `${id}.json`), "utf8")) as Chat;
   }
   const chats = await readChats(chatsDir);
-  const at = (c: Chat) => Date.parse(c.createdAt ?? "") || 0;
+  const at = (c: Chat) => Date.parse(c.updatedAt ?? c.createdAt ?? "") || 0;
   const latest = chats.sort((a, b) => at(b) - at(a))[0];
   if (!latest) throw new Error(`No chats in ${chatsDir}`);
   return latest;
@@ -84,6 +87,8 @@ export interface RenderOptions {
   width: number;
   /** Only lines containing this text (case-insensitive), printed in full. */
   grep?: string;
+  /** Only messages at or after this time (ms); messages without a timestamp are kept. */
+  since?: number;
 }
 
 /** A compact, one-line-per-event view of a chat: learner, agent text, tool calls, results. */
@@ -105,6 +110,7 @@ export function renderChat(chat: Chat, options: RenderOptions): string[] {
       started = (m.content ?? []).some((p) => p.type === "toolCall" && p.name === options.from);
     }
     if (!started) continue;
+    if (options.since !== undefined && m.timestamp !== undefined && m.timestamp < options.since) continue;
     if (m.role === "user") push(`USER  ${textOf(m.content)}`);
     else if (m.role === "toolResult") push(`  ->  ${m.toolName ?? "?"}${m.isError ? " [error]" : ""}: ${textOf(m.content)}`);
     else if (m.role === "assistant" && typeof m.content !== "string") {

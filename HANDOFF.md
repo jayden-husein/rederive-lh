@@ -74,12 +74,17 @@ in-app testing, stop and tell the user exactly what to check.
 (npm.ps1) fails there. Tell the user to run `npm.cmd run <script>`.
 
 **Reading the user's in-app tests** (read-only, from `<learning data>\chats`):
-`npm run transcript -- [chatId|latest] [--from probe_done]` prints a chat
-compactly, each line cut to 300 characters; `--grep <text>` prints only the
-matching lines in full (read a whole teacher message without opening the chat
-JSON), `--width 0` cuts nothing. `npm run leak-check -- [chatId|latest]` flags map techniques and
-code locations shown before the learner reached them; `npm run routing-report`
-scores the routing eval.
+`npm run transcript -- [chatId|latest]` prints a chat compactly; `latest` is the
+most recently updated chat (tests often continue an old one). `--since 30m` or
+`--tail 40` keep only the new run, `--grep <text>` prints matching lines in full,
+`--width 0` cuts nothing. `npm run leak-check -- latest` flags map techniques and
+code locations shown before the learner reached them. `npm run render-diagrams --
+latest` renders the chat's Mermaid diagrams for the browser pane: look before
+asking for a screenshot. `npm run routing-report` scores the routing eval.
+
+**How the app looks and behaves** (native question cards, dictation, Mermaid,
+styling limits): `docs\host-facts.md`. Read it before changing anything the learner
+sees; add what an in-app test teaches you.
 
 ---
 
@@ -331,7 +336,7 @@ are in `docs\history.md`.
 |---|---|---|
 | 10. README | none | Plain writing; `mattpocock-skills:pr` only if the work goes through a PR. |
 | Any step | `mattpocock-skills:diagnosing-bugs` | When an in-app test by the user fails or something throws. |
-| End of every step | `mattpocock-skills:code-review` | Review changes since the previous step's commit against this file (Spec) and the repo's conventions (Standards) before stopping for user testing. When `src\` is unchanged (only tests, scripts, docs or eval data), review inline instead of with two subagents. |
+| End of every step | `mattpocock-skills:code-review` | Once per step, before the first in-app test: review changes since the previous step's commit against this file (Spec) and the repo's conventions (Standards) with two subagents. Fix rounds after an in-app test get one combined review subagent when they add or restructure code in `src\`, and an inline review otherwise (instruction text, tests, scripts, docs). |
 
 ---
 
