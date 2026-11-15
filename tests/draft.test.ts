@@ -4,8 +4,8 @@ import { sourceFromDraft } from "../src/draft.ts";
 
 test("an attached folder in the composer prefills the dialog", () => {
   // How the first in-app test's attached folder appeared in the sent message.
-  const draft = "i built this with ai and i cant explain it `\\\\wsl.localhost\\Ubuntu\\home\\jayden\\dali-challenge\\`";
-  assert.equal(sourceFromDraft(draft), "\\\\wsl.localhost\\Ubuntu\\home\\jayden\\dali-challenge\\");
+  const draft = "i built this with ai and i cant explain it `\\\\wsl.localhost\\Ubuntu\\home\\me\\dali-challenge\\`";
+  assert.equal(sourceFromDraft(draft), "\\\\wsl.localhost\\Ubuntu\\home\\me\\dali-challenge\\");
 });
 
 test("quoted paths win over bare ones, and the last one wins", () => {

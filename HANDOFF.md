@@ -32,8 +32,7 @@ normal teaching available for missing concepts, and every derived decision
 landing in the learner's knowledge graph (the graph is extracted from teacher
 prose automatically).
 
-**About the user.** Jayden, CS student (C, Java, Python, some TS). Wants this
-as a portfolio project; code quality and a clear README matter. Prefers being
+**About the user.** Code quality and a clear README matter. Prefers being
 asked about product behavior rather than having it guessed.
 
 ---
