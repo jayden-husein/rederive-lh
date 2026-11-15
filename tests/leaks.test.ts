@@ -67,6 +67,33 @@ test("nothing is flagged once the decision is logged, or after the learner said 
   assert.equal(findLeaks(failed, map).filter((f) => f.severity === "leak").length, 2);
 });
 
+test("naming the technique right before logging it is the reveal, not a leak; before a skip or an earlier answer it is", () => {
+  // The learner answers a card, the teacher names the design, then logs it: rule 4.
+  const answer = { role: "toolResult", toolCallId: "q", toolName: "ask_user_question", isError: false, content: [{ type: "text", text: "a queue and a list of seen pages" }] };
+  const reveal: Chat = {
+    messages: [
+      answer,
+      call("s", "send_to_user", { message: "That's a breadth-first crawl with a visited set." }),
+      call("l", "rederive_log_problem", { id: "D1" }),
+      { role: "toolResult", toolCallId: "l", isError: false },
+    ],
+  };
+  assert.deepEqual(findLeaks(reveal, map), []);
+  // Named, then skipped: still a leak.
+  const skipped: Chat = { messages: [answer, call("s", "send_to_user", { message: "It's a breadth-first crawl." }), call("k", "rederive_skip_problem", { id: "D1" })] };
+  assert.equal(findLeaks(skipped, map).filter((f) => f.severity === "leak").length, 2);
+  // Named before the learner's next answer, logged only after it: a leak.
+  const early: Chat = {
+    messages: [
+      answer,
+      call("s", "send_to_user", { message: "Think breadth-first crawl." }),
+      { ...answer, toolCallId: "q2" },
+      call("l", "rederive_log_problem", { id: "D1" }),
+    ],
+  };
+  assert.equal(findLeaks(early, map).filter((f) => f.severity === "leak").length, 2);
+});
+
 test("card text and handoffs count as shown; the plugin's own and file tools don't", () => {
   const chat: Chat = {
     messages: [
@@ -93,4 +120,6 @@ test("the transcript view is one line per event, cut to width, optionally from a
   };
   assert.deepEqual(renderChat(chat, { width: 0 }), ["USER  hi | there", 'CALL  probe_done {"x":1}', "  ->  probe_done [error]: ok", "TEXT  a long message"]);
   assert.deepEqual(renderChat(chat, { width: 10, from: "probe_done" }), ["CALL  prob…", "  ->  prob…", "TEXT  a lo…"]);
+  // grep keeps only matching lines, uncut, whatever the width.
+  assert.deepEqual(renderChat(chat, { width: 10, grep: "LONG" }), ["TEXT  a long message"]);
 });

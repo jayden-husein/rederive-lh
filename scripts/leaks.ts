@@ -26,7 +26,7 @@ export interface Finding {
 // Short or generic words that say nothing about a particular design, and the words the
 // tutor uses about rederive itself ("decision", "progress", "code").
 const STOP = new Set(
-  ("with then from into over onto that this than each when where which while plus also using based like plain text data file files test tests round trip copy " +
+  ("with then from into over onto that this than each when where which while before after until plus also using based like plain text data file files test tests round trip copy " +
     "code decision decisions design problem problems constraint constraints mode progress background learner").split(" "),
 );
 // Folder names that say nothing about the design.
@@ -101,10 +101,30 @@ export function findLeaks(chat: Chat, map: DecisionMapResult): Finding[] {
     }
   };
 
-  for (const m of chat.messages ?? []) {
-    if (m.role === "user") learnerSaid += ` ${textOf(m.content)}`;
-    // Card answers are the learner's words too.
-    if (m.role === "toolResult" && m.toolName === "ask_user_question") learnerSaid += ` ${textOf(m.content)}`;
+  const messages = chat.messages ?? [];
+  // The learner speaks in chat messages and in card answers.
+  const isLearnerInput = (m: (typeof messages)[number]) => m.role === "user" || (m.role === "toolResult" && m.toolName === "ask_user_question");
+  // The teacher names a technique once the learner reaches it (rule 4), then logs it. So a
+  // problem logged before the learner's next input counts as reached from that learner
+  // input on. Skips don't: naming a skipped problem's design is still a leak.
+  const loggedAfter = new Map<number, string[]>();
+  let lastInput = -1;
+  messages.forEach((m, i) => {
+    if (isLearnerInput(m)) lastInput = i;
+    if (m.role !== "assistant" || typeof m.content === "string") return;
+    for (const p of m.content ?? []) {
+      if (p.type === "toolCall" && p.name === TOOL_NAMES.logProblem && !failed.has(p.id) && typeof p.arguments?.id === "string") {
+        loggedAfter.set(lastInput, [...(loggedAfter.get(lastInput) ?? []), p.arguments.id]);
+      }
+    }
+  });
+  for (const id of loggedAfter.get(-1) ?? []) reached.add(id);
+
+  for (const [i, m] of messages.entries()) {
+    if (isLearnerInput(m)) {
+      learnerSaid += ` ${textOf(m.content)}`;
+      for (const id of loggedAfter.get(i) ?? []) reached.add(id);
+    }
     if (m.role !== "assistant" || typeof m.content === "string") continue;
     for (const p of m.content ?? []) {
       if (p.type === "text" && p.text) check(p.text, "text");

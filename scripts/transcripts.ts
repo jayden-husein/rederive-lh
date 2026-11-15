@@ -82,14 +82,22 @@ export interface RenderOptions {
   from?: string;
   /** Cut each line to this many characters; 0 = no limit. */
   width: number;
+  /** Only lines containing this text (case-insensitive), printed in full. */
+  grep?: string;
 }
 
 /** A compact, one-line-per-event view of a chat: learner, agent text, tool calls, results. */
 export function renderChat(chat: Chat, options: RenderOptions): string[] {
   const out: string[] = [];
-  const cut = (s: string) => {
+  const needle = options.grep?.toLowerCase();
+  const push = (s: string) => {
     const flat = s.replace(/\r?\n/g, " | ");
-    return options.width > 0 && flat.length > options.width ? `${flat.slice(0, options.width)}…` : flat;
+    // With grep: only the matching lines, in full.
+    if (needle) {
+      if (flat.toLowerCase().includes(needle)) out.push(flat);
+      return;
+    }
+    out.push(options.width > 0 && flat.length > options.width ? `${flat.slice(0, options.width)}…` : flat);
   };
   let started = !options.from;
   for (const m of chat.messages ?? []) {
@@ -97,12 +105,12 @@ export function renderChat(chat: Chat, options: RenderOptions): string[] {
       started = (m.content ?? []).some((p) => p.type === "toolCall" && p.name === options.from);
     }
     if (!started) continue;
-    if (m.role === "user") out.push(cut(`USER  ${textOf(m.content)}`));
-    else if (m.role === "toolResult") out.push(cut(`  ->  ${m.toolName ?? "?"}${m.isError ? " [error]" : ""}: ${textOf(m.content)}`));
+    if (m.role === "user") push(`USER  ${textOf(m.content)}`);
+    else if (m.role === "toolResult") push(`  ->  ${m.toolName ?? "?"}${m.isError ? " [error]" : ""}: ${textOf(m.content)}`);
     else if (m.role === "assistant" && typeof m.content !== "string") {
       for (const p of m.content ?? []) {
-        if (p.type === "text" && p.text) out.push(cut(`TEXT  ${p.text}`));
-        if (p.type === "toolCall") out.push(cut(`CALL  ${p.name ?? "?"} ${JSON.stringify(p.arguments ?? {})}`));
+        if (p.type === "text" && p.text) push(`TEXT  ${p.text}`);
+        if (p.type === "toolCall") push(`CALL  ${p.name ?? "?"} ${JSON.stringify(p.arguments ?? {})}`);
       }
     }
   }

@@ -75,7 +75,9 @@ in-app testing, stop and tell the user exactly what to check.
 
 **Reading the user's in-app tests** (read-only, from `<learning data>\chats`):
 `npm run transcript -- [chatId|latest] [--from probe_done]` prints a chat
-compactly; `npm run leak-check -- [chatId|latest]` flags map techniques and
+compactly, each line cut to 300 characters; `--grep <text>` prints only the
+matching lines in full (read a whole teacher message without opening the chat
+JSON), `--width 0` cuts nothing. `npm run leak-check -- [chatId|latest]` flags map techniques and
 code locations shown before the learner reached them; `npm run routing-report`
 scores the routing eval.
 
@@ -130,9 +132,9 @@ teacher turns.
 
 | Agent | Always-on text (every turn) | Per-chat text | Plugin tools |
 |---|---|---|---|
-| prober | `proberInstructions` | — | open_repo, set_mode, status, set_authorship, build_map |
-| teacher | `teacherInstructions` | `modeRules(mode, { partial })` in `rederive_status`'s description, and in `rederive_set_mode`'s result | the prober's five; + next/log/skip_problem once the chat has a repo |
-| map worker | `WORKER_INSTRUCTIONS` (`src\worker.ts`) | the repo summary in its prompt | its own read-only file and git tools |
+| prober | `proberInstructions` | — | the routing tools (`createTools` in `src\tools.ts`) |
+| teacher | `teacherInstructions` | `modeRules(...)` in `rederive_status`'s description, and in `rederive_set_mode`'s result | the routing tools; + the problem tools once the chat has a repo |
+| map worker | `WORKER_INSTRUCTIONS` (`src\worker.ts`) | the repo summary in its prompt | its own read-only file and git tools (`createWorkerTools`) |
 
 The learner sees agent text, `send_to_user`, `ask_user_question` cards,
 `plan_init` and the `probe_done` assessment; not tool results.
