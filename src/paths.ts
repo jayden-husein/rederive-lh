@@ -29,7 +29,8 @@ export function isWithin(root: string, child: string): boolean {
  * A missing target rejects with the underlying ENOENT error.
  */
 export async function resolveInsideRoot(root: string, relativePath: string): Promise<string> {
-  const input = relativePath.trim() === "" ? "." : relativePath;
+  // The model may write "src\main.c" on any platform; macOS and Linux need "/".
+  const input = relativePath.trim() === "" ? "." : relativePath.replace(/\\/g, "/");
   if (isAbsolute(input) || win32.isAbsolute(input) || /^[a-zA-Z]:/.test(input)) {
     throw new PathEscapeError(`Path must be relative to the repo root: ${relativePath}`);
   }

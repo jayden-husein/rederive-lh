@@ -9,7 +9,7 @@ let workspace: string;
 let root: string;
 
 before(() => {
-  workspace = realpathSync(tempDir("paths"));
+  workspace = realpathSync.native(tempDir("paths"));
   root = join(workspace, "repo");
   mkdirSync(join(root, "src"), { recursive: true });
   writeFileSync(join(root, "src", "main.c"), "int main(void) { return 0; }\n");

@@ -1,6 +1,6 @@
 {
   "name": "rederive-lh",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "LearnHarness plugin that teaches a codebase by having the learner re-derive its design decisions.",
   "license": "AGPL-3.0-only",

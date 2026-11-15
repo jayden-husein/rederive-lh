@@ -63,6 +63,6 @@ test("extensionless files with NUL bytes are sniffed as binary", async () => {
   mkdirSync(join(root, "bin"), { recursive: true });
   writeFileSync(join(root, "bin", "tool"), Buffer.from([0x7f, 0x45, 0x4c, 0x46, 0x00, 0x01]));
   writeFileSync(join(root, "Makefile"), "all:\n");
-  const found = await findBinaryFiles(realpathSync(root), ["bin/tool", "Makefile", "missing"]);
+  const found = await findBinaryFiles(realpathSync.native(root), ["bin/tool", "Makefile", "missing"]);
   assert.deepEqual([...found], ["bin/tool"]);
 });

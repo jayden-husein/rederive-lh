@@ -53,12 +53,12 @@ test("walks non-git folders, skipping dot folders and noise", async () => {
   const files = await listRepoFiles(project);
   assert.ok(files.includes("web/index.ts"));
   assert.ok(!files.some((f) => f.startsWith(".hidden/")));
-  const data = await analyzeStructure(realpathSync(project), { files });
+  const data = await analyzeStructure(realpathSync.native(project), { files });
   assert.ok(!data.sources.some((f) => f.startsWith("node_modules/") || f.endsWith(".d.ts")));
 });
 
 test("resolves JS/TS, Python, Go and Rust imports like structure.py", async () => {
-  const data = await analyzeStructure(realpathSync(project));
+  const data = await analyzeStructure(realpathSync.native(project));
   assert.deepEqual(edgesOf(data, "web/index.ts"), ["web/db.ts"]);
   assert.deepEqual(edgesOf(data, "web/db.ts"), ["web/models/index.ts"]);
   assert.deepEqual(edgesOf(data, "web/cli.js"), ["web/db.ts"]);
@@ -73,7 +73,7 @@ test("resolves JS/TS, Python, Go and Rust imports like structure.py", async () =
 });
 
 test("entry points come from package.json, names and main functions", async () => {
-  const text = formatStructure(await analyzeStructure(realpathSync(project)));
+  const text = formatStructure(await analyzeStructure(realpathSync.native(project)));
   for (const line of [
     "package.json main: web/index.ts",
     "package.json bin tool: web/cli.js",
@@ -98,7 +98,7 @@ test("never reads through a link that leaves the repo", async (t) => {
     t.skip("creating symlinks needs Developer Mode or admin on Windows");
     return;
   }
-  const root = realpathSync(repo);
+  const root = realpathSync.native(repo);
   // Pretend git tracks the link, as it would for a committed symlink.
   const data = await analyzeStructure(root, { files: ["main.c", "leak.h"] });
   assert.equal(data.texts.get("leak.h"), "");
