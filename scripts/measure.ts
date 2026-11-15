@@ -47,8 +47,8 @@ try {
   const mapPath = process.argv[2];
   if (mapPath) {
     const map = JSON.parse(readFileSync(mapPath, "utf8")) as StoredMap;
-    const sizes = map.decisions.map((d) => formatProblemForAgent(map, { decision: d, revisit: false }).length);
-    row(`next_problem, first (${map.decisions[0]!.id})`, formatProblemForAgent(map, { decision: map.decisions[0]!, revisit: false }));
+    const sizes = map.decisions.map((d) => formatProblemForAgent(map, { decision: d, tag: null, state: "todo" }).length);
+    row(`next_problem, first (${map.decisions[0]!.id})`, formatProblemForAgent(map, { decision: map.decisions[0]!, tag: null, state: "todo" }));
     console.log(`next_problem, mean over ${sizes.length} problems: ${Math.round(sizes.reduce((a, b) => a + b, 0) / sizes.length)} chars`);
   }
 } finally {

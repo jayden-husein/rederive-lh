@@ -4,7 +4,6 @@ import { proberInstructions, teacherInstructions } from "./instructions.ts";
 import { MapStore } from "./map-store.ts";
 import { MAX_SOURCE_CHARS, OPERATIONS, type LogView, type PendingStart, type StartRederiveResult } from "./names.ts";
 import { createDesignQuestionType, createPickQuestionType } from "./grading.ts";
-import { readLog } from "./log.ts";
 import { SessionStore } from "./sessions.ts";
 import { SettingsStore, type Settings } from "./settings.ts";
 import { createTools, openRepoForChat, type ToolDeps } from "./tools.ts";
@@ -117,9 +116,6 @@ export async function activate(ctx: PluginBackendContext): Promise<void> {
   ctx.handle(OPERATIONS.getLog, async (input): Promise<LogView> => {
     const { repo } = await store.getChat(parseChatId(input));
     if (!repo) return { repoName: null, path: null, text: "", archived: [] };
-    await maps.current(repo.id);
-    const path = maps.logFile(repo.id);
-    const [text, archived] = await Promise.all([readLog(path), maps.archivedLogs(repo.id)]);
-    return { repoName: repo.name, path, text, archived };
+    return { repoName: repo.name, ...(await maps.logView(repo.id)) };
   });
 }

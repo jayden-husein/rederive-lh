@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
@@ -183,7 +183,7 @@ test("once a build finishes, problems run in map order and get logged", async ()
   // The result carries the next problem, so the agent opens it in the same turn.
   assert.match(textOf(logged), /^D1 logged\.\nOpen the next problem now, in this turn\.\n\nProblem D2, for you only\./);
   assert.doesNotMatch(textOf(logged), /Root problem/, "the root problem comes only with the first problem");
-  const log = readFileSync(deps.maps.logFile(repoId), "utf8");
+  const log = (await deps.maps.logView(repoId)).text;
   assert.equal(log, "## D1. Problem 1\nstruggled with: s\nfound on their own: f\ndid well: w\ndid ok: o\nbetter idea: b\nhow: explained to them, not derived\n");
   assert.match(t.logProblem.description, /explained: true/);
 
@@ -242,6 +242,16 @@ test("a skipped problem comes back, flagged, after the untouched ones", async ()
   // The problem list lets the agent match a learner's "why"; titles only, with progress marks.
   assert.match(statusText, /D1\. Problem 1 \[done\]\n {2}D2\. Problem 2 \[skipped\]\n {2}D3\. Problem 3 \[done\]/);
   assert.doesNotMatch(statusText, /technique|Constraint/);
+});
+
+test("next_problem by id reports a skipped problem as a revisit and a finished one as a re-run", async () => {
+  const t = tools("chat-a");
+  const skipped = await t.nextProblem.execute("1", { id: "D2" });
+  assert.deepEqual(skipped.details, { id: "D2", state: "loaded", revisit: true });
+  assert.match(textOf(skipped), /Skipped earlier/);
+  const finished = await t.nextProblem.execute("2", { id: "D1" });
+  assert.deepEqual(finished.details, { id: "D1", state: "loaded", revisit: false });
+  assert.match(textOf(finished), /Finished earlier: .*Don't log it a second time\./);
 });
 
 test("after the last problem, next_problem points to the log", async () => {
@@ -335,7 +345,8 @@ test("a group project: own problems first, tagged, and the log says whose part",
   assert.deepEqual(s.details.parts, ["querier"]);
   assert.equal(s.details.nextProblemId, "D3");
   assert.match(textOf(s), /Group project: the learner wrote querier\. Their problems come first\./);
-  assert.match(textOf(s), / {2}D1\. Problem 1 \(partner's\) \[to do\]\n {2}D2\. Problem 2 \(partner's\) \[to do\]\n {2}D3\. Problem 3 \(theirs\) \[to do\]\n {2}D4\. Problem 4 \(theirs\) \[to do\]\n {2}D5\. Problem 5 \(shared\) \[to do\]/);
+  // Tagging and order are the map store's (tests/map-store.test.ts); this checks the wording.
+  assert.match(textOf(s), / {2}D1\. Problem 1 \(partner's\) \[to do\]\n/);
 
   const first = await t.nextProblem.execute("7", {});
   assert.equal(first.details.id, "D3");
@@ -344,7 +355,7 @@ test("a group project: own problems first, tagged, and the log says whose part",
   // Own problems D3, D4, then shared D5, then the partner's D1, D2: nothing is pulled forward.
   const logged = await t.logProblem.execute("8", { id: "D3", struggled: "s", foundAlone: "f", didWell: "w", didOk: "o" });
   assert.equal(logged.details.nextProblemId, "D4");
-  assert.match(readFileSync(deps.maps.logFile(repoId), "utf8"), /^## D3\. Problem 3\n(.+\n){4}whose part: theirs\n$/);
+  assert.match((await deps.maps.logView(repoId)).text, /^## D3\. Problem 3\n(.+\n){4}whose part: theirs\n$/);
   await t.skipProblem.execute("9", { id: "D4" });
   const shared = await t.nextProblem.execute("10", {});
   assert.equal(shared.details.id, "D5");
@@ -369,7 +380,7 @@ test("without recorded parts, problems carry no whose-part line and the log has 
   const t = tools("chat-a");
   const next = await t.nextProblem.execute("1", {});
   assert.doesNotMatch(textOf(next), /Whose part/);
-  assert.doesNotMatch(readFileSync(deps.maps.logFile((await deps.store.getChat("chat-a")).repo!.id), "utf8"), /whose part/);
+  assert.doesNotMatch((await deps.maps.logView((await deps.store.getChat("chat-a")).repo!.id)).text, /whose part/);
 });
 
 test("tools refuse to run after the plugin is deactivated", async () => {

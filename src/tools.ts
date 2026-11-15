@@ -5,13 +5,13 @@ import { join } from "node:path";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { ModelCatalogResponse, PluginBackgroundTool, PluginToolContext } from "learnharness-plugin-api";
 import { Type, type Static } from "typebox";
-import { isRepoRelative, normalizePart, PART_LABELS, tagDecision, type PartTag } from "./authorship.ts";
+import { isRepoRelative, normalizePart, PART_LABELS, type PartTag } from "./authorship.ts";
 import { GitError, isGitWorkTree, runGit } from "./git.ts";
 import { summarizeRepo } from "./history.ts";
 import type { LogEntry } from "./log.ts";
 import { PICK_QUESTION } from "./design-card.ts";
 import { letteredOptions, type Decision, type StoredMap } from "./map.ts";
-import { BUILD_MAP_WORKER, pendingBuild, repoDataDir, type BuildMapInput, type MapStore, type NextProblem, type TaskLister } from "./map-store.ts";
+import { BUILD_MAP_WORKER, pendingBuild, repoDataDir, type BuildMapInput, type CourseProblem, type MapStore, type ProblemState, type TaskLister } from "./map-store.ts";
 import { BUILD_LIMITS, buildMapPrompt } from "./worker.ts";
 import {
   assertDirectory,
@@ -26,7 +26,7 @@ import {
 } from "./repo.ts";
 import { modeRules } from "./instructions.ts";
 import { LOG_ACTION_NAME, TOOL_NAMES } from "./names.ts";
-import { MODES, type Mode, type RepoRecord, type SessionStore } from "./sessions.ts";
+import { MODES, type ChatState, type Mode, type RepoRecord, type SessionStore } from "./sessions.ts";
 
 export interface ToolDeps {
   store: SessionStore;
@@ -114,20 +114,19 @@ export async function openRepoForChat(
   await assertDirectory(path);
   checkAborted(signal);
 
-  const [isGit, ownership, summary, before, map, folders] = await Promise.all([
+  const [isGit, ownership, summary, before, course, folders] = await Promise.all([
     isGitWorkTree(path, signal),
     guessOwnership(path, signal),
     readmeSummary(path),
     deps.store.getChat(chatId),
-    deps.maps.current(id),
+    deps.maps.course(id),
     topLevelFolders(path).catch(() => []),
   ]);
   checkAborted(signal);
   // A map left by an earlier chat: the learner decides whether to continue it.
   let earlierMap: OpenRepoDetails["earlierMap"];
-  if (map && before.repo?.id !== id) {
-    const progress = await deps.maps.progress(id);
-    earlierMap = { logged: map.decisions.filter((d) => progress.done.has(d.id) || progress.skipped.includes(d.id)).length };
+  if (course.state === "ready" && before.repo?.id !== id) {
+    earlierMap = { logged: course.problems.filter((p) => p.state !== "todo").length };
   }
 
   const repo = await deps.store.setRepo(chatId, {
@@ -243,6 +242,8 @@ const ALL_DONE =
   `Every problem is logged. Tell the learner their log is behind the "${LOG_ACTION_NAME}" button in the top bar, ` +
   "and suggest looking across it for a pattern.";
 
+const STATE_MARKS: Record<ProblemState, string> = { done: "[done]", skipped: "[skipped]", todo: "[to do]" };
+
 const RESTART =
   `Restart requested: the learner pressed "Rederive this repo" for this repo. Start fresh: ` +
   `call ${TOOL_NAMES.buildMap} with rebuild: true, then open with the root problem.`;
@@ -285,39 +286,37 @@ export function createStatusTool(deps: ToolDeps, context: PluginToolContext): Ag
       const signal = combinedSignal(deps, toolSignal);
       checkAborted(signal);
       const state = context.agent === "teacher" ? await deps.store.takeChat(context.chatId) : await deps.store.getChat(context.chatId);
-      const map = state.repo ? await deps.maps.current(state.repo.id) : null;
-      const building = state.repo ? pendingBuild(deps.listTasks, state.repo.id) !== null : false;
-      const next = state.repo && map ? await deps.maps.nextProblem(state.repo.id, map, state.parts) : null;
+      const course = state.repo ? await deps.maps.course(state.repo.id, state.parts) : null;
+      const ready = course?.state === "ready" ? course : null;
+      const next = ready?.next ?? null;
       const details: StatusDetails = {
         mode: state.mode,
         repo: state.repo ? { id: state.repo.id, name: state.repo.name, kind: state.repo.kind, path: state.repo.path } : null,
-        mapExists: map !== null,
-        mapBuilding: building,
+        mapExists: ready !== null,
+        mapBuilding: course?.state === "building" || (ready?.building ?? false),
         parts: state.parts,
         nextProblemId: next?.decision.id ?? null,
       };
-      const mapLine = !state.repo
+      const mapLine = !course
         ? ""
-        : map
+        : ready
           ? next
-            ? `Decision map: built. Next problem: ${next.decision.id}${next.revisit ? " (skipped earlier)" : ""} (load it with ${TOOL_NAMES.nextProblem}).`
+            ? `Decision map: built. Next problem: ${next.decision.id}${next.state === "skipped" ? " (skipped earlier)" : ""} (load it with ${TOOL_NAMES.nextProblem}).`
             : "Decision map: built. Every problem is logged."
-          : building
+          : course.state === "building"
             ? "Decision map: being built in the background."
             : "Decision map: not built yet.";
       // Titles carry no solution terms, so the agent can match a learner's "why" to a problem.
-      let problems: string[] = [];
-      if (state.repo && map) {
-        const progress = await deps.maps.progress(state.repo.id);
-        problems = [
-          "Problems (for you only; keep them from the learner):",
-          ...map.decisions.map((d) => {
-            const mark = progress.done.has(d.id) ? " [done]" : progress.skipped.includes(d.id) ? " [skipped]" : " [to do]";
-            const part = state.parts ? ` (${PART_LABELS[tagDecision(d, state.parts)]})` : "";
-            return `  ${d.id}. ${d.title}${part}${mark}`;
-          }),
-        ];
-      }
+      const problems = ready
+        ? [
+            "Problems (for you only; keep them from the learner):",
+            ...ready.problems.map((p) => {
+              const part = p.tag ? ` (${PART_LABELS[p.tag]})` : "";
+              return `  ${p.decision.id}. ${p.decision.title}${part} ${STATE_MARKS[p.state]}`;
+            }),
+          ]
+        : [];
+      const map = ready?.map;
       const lines = [
         state.startPending && context.agent === "teacher" ? RESTART : "",
         `Mode: ${state.mode ?? "not set"}.`,
@@ -372,7 +371,7 @@ export function createSetAuthorshipTool(deps: ToolDeps, context: PluginToolConte
     execute: async (_id, input, toolSignal) => {
       const signal = combinedSignal(deps, toolSignal);
       checkAborted(signal);
-      const repo = await currentRepo(deps, context.chatId);
+      const { repo } = await chatWithRepo(deps, context.chatId);
       if (!input.parts.every(isRepoRelative)) {
         throw new Error('Give paths relative to the repo root, without ".." (e.g. "querier/").');
       }
@@ -398,12 +397,14 @@ export function createSetAuthorshipTool(deps: ToolDeps, context: PluginToolConte
 // ---------------------------------------------------------------------------
 // Decision map: build it in the background, then hand out problems one at a time.
 
-async function currentRepo(deps: ToolDeps, chatId: string): Promise<RepoRecord> {
-  const { repo } = await deps.store.getChat(chatId);
-  if (!repo) throw new Error(`No repo is open in this chat. Call ${TOOL_NAMES.openRepo} first.`);
-  return repo;
+async function chatWithRepo(deps: ToolDeps, chatId: string): Promise<ChatState & { repo: RepoRecord }> {
+  const state = await deps.store.getChat(chatId);
+  if (!state.repo) throw new Error(`No repo is open in this chat. Call ${TOOL_NAMES.openRepo} first.`);
+  return { ...state, repo: state.repo };
 }
 
+const BUILDING = "The map is still being built. Keep the learner on the root problem for now.";
+const NO_MAP = `No map yet. Call ${TOOL_NAMES.buildMap} first.`;
 
 async function headSha(path: string, signal: AbortSignal): Promise<string | null> {
   try {
@@ -440,7 +441,7 @@ export function buildMapDefinition(deps: ToolDeps): PluginBackgroundTool<typeof 
     async prepare(input, context) {
       const signal = deps.signal;
       checkAborted(signal);
-      const repo = await currentRepo(deps, context.chatId);
+      const { repo } = await chatWithRepo(deps, context.chatId);
       if (pendingBuild(deps.listTasks, repo.id)) throw new Error("A map for this repo is already being built. Wait for its result.");
       if (!input.rebuild && (await deps.maps.hasMap(repo.id))) {
         throw new Error(`This repo already has a map. Call ${TOOL_NAMES.nextProblem} instead, or pass rebuild: true only if the learner wants to start fresh.`);
@@ -498,8 +499,6 @@ export interface NextProblemDetails {
   revisit?: boolean;
 }
 
-type ProblemToRun = Pick<NextProblem, "decision" | "revisit"> & Partial<Pick<NextProblem, "tag">>;
-
 // Own problems run before the earlier problems they build on, so Given may name designs
 // the learner hasn't derived yet.
 const OWN_OPENING =
@@ -518,12 +517,13 @@ const PART_LINES: Record<PartTag, string> = {
  * A problem as the agent runs it. Hidden from the learner. The evidence is left out (the
  * agent never needs it to teach), and the root problem only comes with the first one.
  */
-export function formatProblemForAgent(map: StoredMap, problem: ProblemToRun): string {
+export function formatProblemForAgent(map: StoredMap, problem: CourseProblem): string {
   const d = problem.decision;
   const first = map.decisions[0]?.id === d.id;
   return [
     `Problem ${d.id}, for you only.`,
-    problem.revisit ? "Skipped earlier: say you're coming back to it, then open it fresh." : "",
+    problem.state === "skipped" ? "Skipped earlier: say you're coming back to it, then open it fresh." : "",
+    problem.state === "done" ? "Finished earlier: the learner asked to run it again. Don't log it a second time." : "",
     problem.tag ? PART_LINES[problem.tag] : "",
     first ? `Root problem: ${map.rootProblem}` : "",
     `Problem: ${d.problem}`,
@@ -549,22 +549,14 @@ export function createNextProblemTool(deps: ToolDeps, context: PluginToolContext
     parameters: NextProblemParameters,
     execute: async (_id, input, toolSignal) => {
       checkAborted(combinedSignal(deps, toolSignal));
-      const repo = await currentRepo(deps, context.chatId);
-      const map = await deps.maps.current(repo.id);
-      if (!map) {
-        const building = pendingBuild(deps.listTasks, repo.id) !== null;
-        return building
-          ? { content: text("The map is still being built. Keep the learner on the root problem for now."), details: { id: null, state: "building" } }
-          : { content: text(`No map yet. Call ${TOOL_NAMES.buildMap} first.`), details: { id: null, state: "no-map" } };
-      }
-      const { parts } = await deps.store.getChat(context.chatId);
-      let next: ProblemToRun | null;
+      const { repo, parts } = await chatWithRepo(deps, context.chatId);
+      const course = await deps.maps.course(repo.id, parts);
+      if (course.state === "building") return { content: text(BUILDING), details: { id: null, state: "building" } };
+      if (course.state === "none") return { content: text(NO_MAP), details: { id: null, state: "no-map" } };
+      let next = course.next;
       if (input.id) {
-        const decision = map.decisions.find((d) => d.id === input.id);
-        if (!decision) throw new Error(`No problem ${input.id} in this map.`);
-        next = { decision, revisit: false, tag: parts ? tagDecision(decision, parts) : null };
-      } else {
-        next = await deps.maps.nextProblem(repo.id, map, parts);
+        next = course.problems.find((p) => p.decision.id === input.id) ?? null;
+        if (!next) throw new Error(`No problem ${input.id} in this map.`);
       }
       if (!next) {
         return {
@@ -573,8 +565,8 @@ export function createNextProblemTool(deps: ToolDeps, context: PluginToolContext
         };
       }
       return {
-        content: text(formatProblemForAgent(map, next)),
-        details: { id: next.decision.id, state: "loaded", revisit: next.revisit },
+        content: text(formatProblemForAgent(course.map, next)),
+        details: { id: next.decision.id, state: "loaded", revisit: next.state === "skipped" },
       };
     },
   };
@@ -643,14 +635,16 @@ async function recordProblem(
 ): Promise<{ content: ReturnType<typeof text>; details: LogProblemDetails }> {
   const signal = combinedSignal(deps, toolSignal);
   checkAborted(signal);
-  const { repo, parts } = await deps.store.getChat(chatId);
-  if (!repo) throw new Error(`No repo is open in this chat. Call ${TOOL_NAMES.openRepo} first.`);
-  if (!(await deps.maps.hasMap(repo.id))) throw new Error(`No map for this repo yet. Call ${TOOL_NAMES.buildMap} first.`);
-  const { decision, next, map } = await deps.maps.logProblem(repo.id, id, entry, signal, parts);
+  const { repo, parts } = await chatWithRepo(deps, chatId);
+  const result = await deps.maps.record(repo.id, id, entry, { parts, signal });
+  if (result.state === "building") throw new Error(`Nothing was logged. ${BUILDING}`);
+  if (result.state === "none") throw new Error(`Nothing was logged. ${NO_MAP}`);
+  const { decision, course } = result;
+  const next = course.next;
   const skipped = entry === "skipped";
   const lines = [
     skipped ? `${decision.id} skipped; it comes back after the others.` : `${decision.id} logged.`,
-    next ? `Open the next problem now, in this turn.\n\n${formatProblemForAgent(map, next)}` : ALL_DONE,
+    next ? `Open the next problem now, in this turn.\n\n${formatProblemForAgent(course.map, next)}` : ALL_DONE,
   ];
   return { content: text(lines.join("\n")), details: { id: decision.id, skipped, nextProblemId: next?.decision.id ?? null } };
 }
