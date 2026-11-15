@@ -11,7 +11,7 @@
   "scripts": {
     "sdk": "node scripts/sdk.ts",
     "build": "node scripts/build.ts",
-    "package": "npm run build && node scripts/package.ts",
+    "package": "node scripts/package.ts --check && npm run build && node scripts/package.ts",
     "typecheck": "tsc --noEmit",
     "summary": "node scripts/summary.ts",
     "test": "node --test \"tests/**/*.test.ts\"",
