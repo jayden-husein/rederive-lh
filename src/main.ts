@@ -218,11 +218,13 @@ function openLogDialog(ctx: PluginFrontendContext, chatId: string): void {
         const body = doc.createElement("pre");
         // The dialog inherits the UI font (JetBrains Mono), which read as bold for a page of notes
         // (in-app test, 2026-11-15): the log uses the prose font the chat's text uses.
+        // In its own box, set apart from the path above and the buttons below.
         body.style.cssText =
-          "white-space:pre-wrap;overflow-wrap:anywhere;max-height:60vh;overflow:auto;margin:0;font-weight:400;" +
-          "font-family:var(--font-prose);font-size:var(--lh-prose-size);line-height:var(--lh-prose-leading)";
+          "white-space:pre-wrap;overflow-wrap:anywhere;max-height:55vh;overflow:auto;margin:12px 0;font-weight:400;" +
+          "font-family:var(--font-prose);font-size:var(--lh-prose-size);line-height:var(--lh-prose-leading);" +
+          "padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--background)";
         const buttons = doc.createElement("div");
-        buttons.style.cssText = "display:flex;gap:8px;justify-content:flex-end;margin-top:8px";
+        buttons.style.cssText = "display:flex;gap:8px;justify-content:flex-end;margin-top:12px";
         const copySlot = doc.createElement("div");
         const closeSlot = doc.createElement("div");
         buttons.append(copySlot, closeSlot);
@@ -243,6 +245,7 @@ function openLogDialog(ctx: PluginFrontendContext, chatId: string): void {
             body.textContent = log.text.trim() || "Nothing logged yet.";
             if (log.archived.length) {
               const note = doc.createElement("p");
+              note.style.cssText = where.style.cssText;
               note.textContent = `Logs from before a map rebuild sit in the same folder: ${log.archived.join(", ")}.`;
               container.insertBefore(note, buttons);
             }
