@@ -83,15 +83,21 @@ nobody has tried the plugin in LearnHarness there yet: issues welcome.
 4. Make sure a cheap model slot is set in LearnHarness. The map worker and the
    free-text grader use it.
 
-**Updating.** From 0.3.0 on, Rederive checks GitHub for a new release when
-LearnHarness starts and once a day. When one is out, an **Update Rederive**
-button appears in the sidebar (the same controls are under Settings → Community
-plugins → Rederive → Updates). Click **Update**, then restart LearnHarness.
-The download is checked against the SHA-256 GitHub lists for the release before
-anything is replaced. To update by hand instead, or from 0.2.0 or earlier,
-replace the files in `rederive-lh/dist` with the new zip's and restart
-LearnHarness. Either way the plugin keeps its maps, logs and settings in
-`rederive-lh/data`, which updates don't touch.
+### Updating
+
+Updates are automatic: there's nothing to download or extract. Rederive checks
+for a new release when LearnHarness starts and once a day, and when one is out,
+an **Update Rederive** button appears in the sidebar. Click it, click
+**Update**, and restart LearnHarness. Nothing installs without that click, and
+the download is checked against the release's SHA-256 before anything is
+replaced. Your maps, logs and settings in `rederive-lh/data` are kept.
+
+The same controls, and the switch for the automatic checks, are under Settings →
+Community plugins → Rederive.
+
+Automatic updates started with 0.3.0. On 0.2.0 or earlier, install the
+[latest release](../../releases/latest) by hand once: replace the files in
+`rederive-lh/dist` with the zip's and restart LearnHarness.
 
 ### Build from source
 
