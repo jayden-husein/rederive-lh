@@ -2,7 +2,7 @@
   "apiVersion": 1,
   "id": "rederive-lh",
   "name": "Rederive",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "minAppVersion": "0.6.1",
   "description": "Learn a codebase by re-deriving its design decisions, with normal teaching when a concept is missing.",
   "main": "main.js",
