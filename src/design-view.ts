@@ -51,6 +51,38 @@ interface ConfidenceSlider {
   apply(value: Confidence | null, active: boolean): void;
   /** ← / →: one stop down or up. True when it moved, so the caller can claim the key. */
   step(delta: number): boolean;
+  /** Move focus to the slider; false on a version 1 card, which has none. */
+  focus(): boolean;
+  /** True when `target` is the slider itself. */
+  owns(target: EventTarget | null): boolean;
+}
+
+/**
+ * Plain ← / → anywhere in the card (the text box, the options, the slider) move the
+ * confidence one stop: design answers are mostly dictated, so the text box doesn't need
+ * them for the caret (decided with the user, 2026-11-15). The listener is on the window in
+ * the capture phase, so it sees the key before the host's own handlers can claim it.
+ */
+function listenForArrows(root: HTMLElement, slider: ConfidenceSlider, signal: AbortSignal): () => void {
+  const view = root.ownerDocument.defaultView;
+  if (!view) return () => undefined;
+  const onKey = (event: KeyboardEvent) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing) return;
+    if (!(event.target instanceof Node) || !root.contains(event.target)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    slider.step(event.key === "ArrowRight" ? 1 : -1);
+  };
+  view.addEventListener("keydown", onKey, { capture: true, signal });
+  return () => view.removeEventListener("keydown", onKey, { capture: true });
+}
+
+/** Tab from the answer moves to the slider (the host's Tab chain doesn't know it); Tab from the slider goes on. */
+function tabToSlider(slider: ConfidenceSlider, root: HTMLElement): "handled" | "pass" {
+  const focused = root.ownerDocument.activeElement;
+  if (slider.owns(focused) || !root.contains(focused)) return "pass";
+  return slider.focus() ? "handled" : "pass";
 }
 
 /**
@@ -59,7 +91,9 @@ interface ConfidenceSlider {
  * to the stops; ←/→ move one stop. Rests at 50%. `onChange` runs when it moves.
  */
 function mountConfidence(root: HTMLElement, props: PluginQuestionEditorProps, onChange: () => void): ConfidenceSlider {
-  if (props.contractVersion < CARD_CONTRACT_VERSION) return { value: () => null, apply: () => undefined, step: () => false };
+  if (props.contractVersion < CARD_CONTRACT_VERSION) {
+    return { value: () => null, apply: () => undefined, step: () => false, focus: () => false, owns: () => false };
+  }
   const doc = root.ownerDocument;
   const row = doc.createElement("div");
   row.className = "rederive-confidence";
@@ -99,13 +133,8 @@ function mountConfidence(root: HTMLElement, props: PluginQuestionEditorProps, on
     if (moved) onChange();
     return moved;
   };
+  // Arrow keys come through listenForArrows: a step-1 range would move 50 → 51 and snap back.
   input.addEventListener("input", () => set(snapConfidence(Number(input.value))));
-  // A step-1 range would move 50 → 51 and snap straight back: step by stops instead.
-  input.addEventListener("keydown", (event) => {
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-    event.preventDefault();
-    if (active) set(stepConfidence(current, event.key === "ArrowRight" ? 1 : -1));
-  });
   show();
   return {
     value: () => current,
@@ -116,6 +145,12 @@ function mountConfidence(root: HTMLElement, props: PluginQuestionEditorProps, on
       show();
     },
     step: (delta) => active && set(stepConfidence(current, delta)),
+    focus: () => {
+      if (input.disabled) return false;
+      input.focus();
+      return true;
+    },
+    owns: (target) => target === input,
   };
 }
 
@@ -194,12 +229,8 @@ function mountChoiceEditor(ui: Ui, container: HTMLElement, payload: DesignPayloa
     const picked = inputs.find((i) => i.checked);
     if (picked) publish(picked.value);
   });
-  // As in the native quiz, ← / → on the options move the confidence; ↑ / ↓ still pick.
-  root.addEventListener("keydown", (event) => {
-    if ((event.key !== "ArrowLeft" && event.key !== "ArrowRight") || !inputs.includes(event.target as HTMLInputElement)) return;
-    event.preventDefault();
-    slider.step(event.key === "ArrowRight" ? 1 : -1);
-  });
+  // As in the native quiz, ← / → move the confidence; ↑ / ↓ still pick.
+  const stopArrows = listenForArrows(root, slider, props.signal);
   // The reasoning goes in the host thinking box (showThinking on the pick card), which
   // also takes dictation, so this editor has no box of its own.
   const apply = (state: PluginQuestionAnswerState, nextActive: boolean) => {
@@ -215,8 +246,10 @@ function mountChoiceEditor(ui: Ui, container: HTMLElement, payload: DesignPayloa
   return {
     update: ({ answer, active: nextActive }) => apply(answer, nextActive),
     focus: () => (inputs.find((i) => i.checked) ?? inputs[0])?.focus(),
+    handleKeyDown: (key) => (key === "Tab" ? tabToSlider(slider, root) : "pass"),
     dispose: () => {
       disposed = true;
+      stopArrows();
       for (const w of widgets) w.dispose();
       root.remove();
     },
@@ -239,6 +272,7 @@ function mountDesignEditor(container: HTMLElement, props: PluginQuestionEditorPr
   box.addEventListener("input", publish);
   // Under the box; an empty box keeps the slider's value locally until there is text.
   const slider = mountConfidence(root, props, publish);
+  const stopArrows = listenForArrows(root, slider, props.signal);
   const apply = (state: PluginQuestionAnswerState, nextActive: boolean) => {
     active = nextActive;
     const draft = readAnswer(state);
@@ -249,6 +283,7 @@ function mountDesignEditor(container: HTMLElement, props: PluginQuestionEditorPr
   return {
     update: ({ answer, active: nextActive }) => apply(answer, nextActive),
     focus: () => box.focus(),
+    handleKeyDown: (key) => (key === "Tab" ? tabToSlider(slider, root) : "pass"),
     appendTranscript: (text) => {
       if (disposed || !active) return;
       appendSpeech(box, text);
@@ -256,6 +291,7 @@ function mountDesignEditor(container: HTMLElement, props: PluginQuestionEditorPr
     },
     dispose: () => {
       disposed = true;
+      stopArrows();
       root.remove();
     },
   };
