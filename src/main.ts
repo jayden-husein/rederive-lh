@@ -1,16 +1,23 @@
 // Frontend entry: activated once per LearnHarness window while the plugin is enabled.
-// Collapsed tool cards that never show the map, the settings rows, and the
-// "Rederive this repo" top-bar action.
-import type { PluginActionContext, PluginFrontendContext, PluginSettingsRow, PluginWidgetHandle } from "learnharness-plugin-api";
+// Collapsed tool cards that never show the map, the settings page (rows and updates), and
+// the "Rederive this repo" top-bar action.
+import type {
+  PluginActionContext,
+  PluginFrontendContext,
+  PluginSettingsRow,
+  PluginSettingsSchema,
+  PluginWidgetHandle,
+} from "learnharness-plugin-api";
 import { cardText, RENDERED_TOOLS } from "./cards.ts";
 import { registerDesignCards } from "./design-view.ts";
 import { sourceFromDraft } from "./draft.ts";
+import { registerUpdates, type UpdatesUi } from "./update-view.ts";
 import { LOG_ACTION_NAME, MAX_SOURCE_CHARS, OPERATIONS, restartNote, type LogView, type PendingStart, type StartRederiveResult } from "./names.ts";
 // Type-only: settings.ts is Node code and must stay out of the browser bundle.
 import type { DefaultMode, Settings } from "./settings.ts";
 
 /** Shown until the backend answers; the backend owns the real defaults. */
-const PLACEHOLDER_SETTINGS: Settings = { defaultMode: "auto", defaultRepo: "" };
+const PLACEHOLDER_SETTINGS: Settings = { defaultMode: "auto", defaultRepo: "", checkUpdates: true };
 
 const tooLong = (value: string) => (value.length > MAX_SOURCE_CHARS ? "Too long." : undefined);
 
@@ -46,8 +53,14 @@ function registerCards(ctx: PluginFrontendContext): void {
   }
 }
 
-function registerSettingsRows(ctx: PluginFrontendContext, settings: { current: Settings }): void {
-  let handle: PluginWidgetHandle<{ rows: PluginSettingsRow[] }> | null = null;
+/** Settings page: the settings rows, then the Updates panel. */
+function registerSettingsPage(ctx: PluginFrontendContext, settings: { current: Settings }, updates: UpdatesUi): void {
+  // One handle per open settings page (each window mounts its own).
+  const handles = new Set<PluginWidgetHandle<PluginSettingsSchema>>();
+  let loaded = false;
+  const publish = () => {
+    for (const handle of handles) handle.update({ rows: rows(settings.current, loaded) });
+  };
 
   const save = async (patch: Partial<Settings>) => {
     try {
@@ -56,7 +69,7 @@ function registerSettingsRows(ctx: PluginFrontendContext, settings: { current: S
     } finally {
       // Publish the accepted value: the saved one, or the previous one if the save failed
       // (the host reports the error).
-      if (!ctx.signal.aborted) handle?.update({ rows: rows(settings.current, true) });
+      if (!ctx.signal.aborted) publish();
     }
   };
 
@@ -81,9 +94,17 @@ function registerSettingsRows(ctx: PluginFrontendContext, settings: { current: S
       validate: tooLong,
       onChange: (value) => save({ defaultRepo: value }),
     },
+    {
+      type: "toggle",
+      key: "checkUpdates",
+      label: "Check for updates automatically",
+      description: "Asks GitHub for a newer release when LearnHarness starts and once a day. Updates install only when you click Update.",
+      value: s.checkUpdates,
+      disabled: !loaded,
+      onChange: (value) => save({ checkUpdates: value }),
+    },
   ];
 
-  handle = ctx.registerSettings({ rows: rows(settings.current, false) });
   const load = () =>
     ctx
       .call<Settings>(OPERATIONS.getSettings)
@@ -92,8 +113,25 @@ function registerSettingsRows(ctx: PluginFrontendContext, settings: { current: S
       })
       .catch(() => undefined) // Keep what we have; a failed save will surface the error.
       .finally(() => {
-        if (!ctx.signal.aborted) handle?.update({ rows: rows(settings.current, true) });
+        loaded = true;
+        if (!ctx.signal.aborted) publish();
       });
+
+  ctx.registerSettings((container, signal) => {
+    const doc = container.ownerDocument;
+    const rowsSlot = doc.createElement("div");
+    const updatesSlot = doc.createElement("div");
+    container.append(rowsSlot, updatesSlot);
+
+    const handle = ctx.ui.mountSettingsRows(rowsSlot, { rows: rows(settings.current, loaded) }, { signal });
+    handles.add(handle);
+    updates.mountSection(updatesSlot, signal);
+    void load();
+    return () => {
+      handles.delete(handle);
+      container.replaceChildren();
+    };
+  });
   void load();
   ctx.onResync(() => void load());
 }
@@ -317,7 +355,7 @@ export function activate(ctx: PluginFrontendContext): void {
   const settings = { current: { ...PLACEHOLDER_SETTINGS } };
   registerCards(ctx);
   registerDesignCards(ctx);
-  registerSettingsRows(ctx, settings);
+  registerSettingsPage(ctx, settings, registerUpdates(ctx));
   registerStartAction(ctx, settings);
   registerLogAction(ctx);
   registerRestartNote(ctx);

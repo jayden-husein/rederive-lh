@@ -5,7 +5,7 @@ import { TOOL_NAMES } from "../src/names.ts";
 import { DEFAULT_MODES, type Settings } from "../src/settings.ts";
 import { WORKER_INSTRUCTIONS } from "../src/worker.ts";
 
-const base: Settings = { defaultMode: "auto", defaultRepo: "" };
+const base: Settings = { defaultMode: "auto", defaultRepo: "", checkUpdates: true };
 
 test("prober routing follows the default-mode setting", () => {
   const expected = {

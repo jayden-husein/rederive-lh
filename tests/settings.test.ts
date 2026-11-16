@@ -14,16 +14,16 @@ function store() {
   return new SettingsStore(dir);
 }
 
-test("new installs default to auto with no default repo, and nothing is written", async () => {
+test("new installs default to auto with no default repo and update checks on, and nothing is written", async () => {
   const s = store();
-  assert.deepEqual(await s.get(), { defaultMode: "auto", defaultRepo: "" });
+  assert.deepEqual(await s.get(), { defaultMode: "auto", defaultRepo: "", checkUpdates: true });
   assert.equal(existsSync(s.file), false);
 });
 
 test("save validates, trims, persists and survives a new store", async () => {
   const s = store();
-  const saved = await s.save({ defaultMode: "never", defaultRepo: "  \\\\wsl.localhost\\Ubuntu\\home\\me\\tse  " });
-  assert.deepEqual(saved, { defaultMode: "never", defaultRepo: "\\\\wsl.localhost\\Ubuntu\\home\\me\\tse" });
+  const saved = await s.save({ defaultMode: "never", defaultRepo: "  \\\\wsl.localhost\\Ubuntu\\home\\me\\tse  ", checkUpdates: false });
+  assert.deepEqual(saved, { defaultMode: "never", defaultRepo: "\\\\wsl.localhost\\Ubuntu\\home\\me\\tse", checkUpdates: false });
   assert.deepEqual(await new SettingsStore(s.file.replace(/[\\/]settings\.json$/, "")).get(), saved);
   assert.deepEqual(JSON.parse(readFileSync(s.file, "utf8")), saved);
 });
@@ -35,12 +35,13 @@ test("bad input is rejected with a readable message and leaves the saved file al
   await assert.rejects(s.save({ defaultRepo: 3 }), /defaultRepo must be a string/);
   await assert.rejects(s.save(null), /must be an object/);
   await assert.rejects(s.save({ defaultRepo: "x".repeat(1001) }), /longer than 1000/);
+  await assert.rejects(s.save({ checkUpdates: "yes" }), /checkUpdates must be true or false/);
   assert.equal((await s.get()).defaultMode, "ask");
 });
 
 test("missing fields fall back to defaults", () => {
   assert.deepEqual(parseSettings({}), DEFAULT_SETTINGS);
-  assert.deepEqual(parseSettings({ defaultMode: "always" }), { defaultMode: "always", defaultRepo: "" });
+  assert.deepEqual(parseSettings({ defaultMode: "always" }), { defaultMode: "always", defaultRepo: "", checkUpdates: true });
 });
 
 test("a damaged settings file reads as defaults", async () => {

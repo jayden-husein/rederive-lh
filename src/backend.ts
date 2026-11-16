@@ -2,12 +2,15 @@
 import type { PluginBackendContext } from "learnharness-plugin-api";
 import { proberInstructions, teacherInstructions } from "./instructions.ts";
 import { MapStore } from "./map-store.ts";
-import { MAX_SOURCE_CHARS, OPERATIONS, type LogView, type PendingStart, type StartRederiveResult } from "./names.ts";
+import { MAX_SOURCE_CHARS, OPERATIONS, UPDATE_TOPIC, type LogView, type PendingStart, type StartRederiveResult } from "./names.ts";
 import { createDesignQuestionType, createPickQuestionType } from "./grading.ts";
 import { SessionStore } from "./sessions.ts";
 import { SettingsStore, type Settings } from "./settings.ts";
 import { createTools, openRepoForChat, type ToolDeps } from "./tools.ts";
+import { removeLeftoverStages, Updater } from "./updates.ts";
 import { createBuildMapWorker } from "./worker.ts";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface StartRederiveInput {
   chatId: string;
@@ -82,10 +85,37 @@ export async function activate(ctx: PluginBackendContext): Promise<void> {
   ctx.registerQuestionType(createDesignQuestionType(graderDeps));
   ctx.registerQuestionType(createPickQuestionType(graderDeps));
 
+  // Updates: check at startup and once a day while the setting is on; install only on a click.
+  void removeLeftoverStages(ctx.directory);
+  const updater = new Updater({
+    manifest: ctx.manifest,
+    directory: ctx.directory,
+    // Global fetch; a parameter so tests can fake GitHub.
+    fetch: (url, init) => fetch(url, init),
+    signal: ctx.signal,
+    onChange: (state) => ctx.events.emit(UPDATE_TOPIC, state),
+  });
+  let checkUpdates = settings.checkUpdates;
+  const autoCheck = () => {
+    if (checkUpdates && !ctx.signal.aborted) void updater.check();
+  };
+  autoCheck();
+  const timer = setInterval(autoCheck, DAY_MS);
+  timer.unref();
+  ctx.cleanup(() => clearInterval(timer));
+  ctx.handle(OPERATIONS.getUpdate, () => updater.state());
+  ctx.handle(OPERATIONS.checkUpdate, () => updater.check());
+  ctx.handle(OPERATIONS.installUpdate, () => updater.install());
+
   ctx.handle(OPERATIONS.getSettings, () => settingsStore.get());
   ctx.handle(OPERATIONS.saveSettings, async (input) => {
     const saved = await settingsStore.save(input);
-    if (!ctx.signal.aborted) applyInstructions(saved);
+    if (ctx.signal.aborted) return saved;
+    applyInstructions(saved);
+    // Turning checks on checks right away when nothing has been checked this run.
+    const turnedOn = saved.checkUpdates && !checkUpdates;
+    checkUpdates = saved.checkUpdates;
+    if (turnedOn && updater.state().checkedAt === null) autoCheck();
     return saved;
   });
 

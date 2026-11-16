@@ -19,9 +19,11 @@ export interface Settings {
   defaultMode: DefaultMode;
   /** Repo path or URL to suggest when the learner names no repo; "" for none. */
   defaultRepo: string;
+  /** Check GitHub for a newer release at startup and once a day. */
+  checkUpdates: boolean;
 }
 
-export const DEFAULT_SETTINGS: Settings = { defaultMode: "auto", defaultRepo: "" };
+export const DEFAULT_SETTINGS: Settings = { defaultMode: "auto", defaultRepo: "", checkUpdates: true };
 
 
 /** Validate untrusted input (frontend call or file contents). Throws with a readable message. */
@@ -35,7 +37,9 @@ export function parseSettings(value: unknown): Settings {
   const defaultRepo = v.defaultRepo ?? DEFAULT_SETTINGS.defaultRepo;
   if (typeof defaultRepo !== "string") throw new Error("defaultRepo must be a string.");
   if (defaultRepo.length > MAX_SOURCE_CHARS) throw new Error(`defaultRepo is longer than ${MAX_SOURCE_CHARS} characters.`);
-  return { defaultMode: defaultMode as DefaultMode, defaultRepo: defaultRepo.trim() };
+  const checkUpdates = v.checkUpdates ?? DEFAULT_SETTINGS.checkUpdates;
+  if (typeof checkUpdates !== "boolean") throw new Error("checkUpdates must be true or false.");
+  return { defaultMode: defaultMode as DefaultMode, defaultRepo: defaultRepo.trim(), checkUpdates };
 }
 
 export class SettingsStore {

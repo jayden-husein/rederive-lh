@@ -43,7 +43,37 @@ export const OPERATIONS = {
   getLog: "get-log",
   pendingStart: "pending-start",
   clearStart: "clear-start",
+  getUpdate: "get-update",
+  checkUpdate: "check-update",
+  installUpdate: "install-update",
 } as const;
+
+/** Backend → frontend notification topic carrying the new UpdateState. */
+export const UPDATE_TOPIC = "update-state";
+
+/** Where releases are published; the updater reads its latest release. */
+export const RELEASES_REPO = "jayden-husein/rederive-lh";
+
+/** What the updater knows, shared by the settings section and the sidebar button. */
+export interface UpdateState {
+  /** The running version (the manifest's). */
+  current: string;
+  /**
+   * "release": installed from a release zip, so the updater can replace dist/.
+   * "source": a git checkout that builds dist/; it updates with git pull and a build.
+   */
+  install: "release" | "source";
+  checking: boolean;
+  installing: boolean;
+  /** The latest release, only when it is newer than what is running or installed. */
+  available: { version: string; notesUrl: string } | null;
+  /** Version installed during this run, waiting for a LearnHarness restart. */
+  installed: string | null;
+  /** ISO time of the last finished check, successful or not. */
+  checkedAt: string | null;
+  /** The last check's or install's failure, in plain words. */
+  error: string | null;
+}
 
 /** A button press whose restart note has not reached the agent yet. */
 export interface PendingStart {

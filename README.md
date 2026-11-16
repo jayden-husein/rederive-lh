@@ -83,8 +83,14 @@ nobody has tried the plugin in LearnHarness there yet: issues welcome.
 4. Make sure a cheap model slot is set in LearnHarness. The map worker and the
    free-text grader use it.
 
-To update, replace the files in `rederive-lh/dist` with the new zip's and restart
-LearnHarness. The plugin keeps its maps, logs and settings in
+**Updating.** From 0.3.0 on, Rederive checks GitHub for a new release when
+LearnHarness starts and once a day. When one is out, an **Update Rederive**
+button appears in the sidebar (the same controls are under Settings → Community
+plugins → Rederive → Updates). Click **Update**, then restart LearnHarness.
+The download is checked against the SHA-256 GitHub lists for the release before
+anything is replaced. To update by hand instead, or from 0.2.0 or earlier,
+replace the files in `rederive-lh/dist` with the new zip's and restart
+LearnHarness. Either way the plugin keeps its maps, logs and settings in
 `rederive-lh/data`, which updates don't touch.
 
 ### Build from source
@@ -123,6 +129,11 @@ Or click **Rederive this repo** in the top bar of a teaching session
   mode; *Never* waits until you ask for it.
 - **Default repo**: suggested when you don't name one. It's opened only after you
   confirm.
+- **Check for updates automatically**: on by default. Asks GitHub's public
+  releases API for the latest version and sends nothing about you. Off means
+  checks happen only when you click **Check now**. Nothing is installed without
+  a click. A copy built from a git checkout is told about new releases but never
+  overwritten: update it with `git pull` and a build.
 
 ## Safety
 
@@ -130,7 +141,8 @@ Repo contents are treated as data, never as instructions. If a file in the repo
 tries to get the tutor to run commands, change files or fetch URLs, it won't, and
 it tells you. The plugin never runs the repo's code, scripts, install steps or
 tests, and never writes to the repo. Its git commands are read-only. Everything it
-writes (maps, logs, clones, settings) goes in its own data folder.
+writes (maps, logs, clones, settings) goes in its own data folder. The one
+exception is an update you click: it replaces the plugin's own `dist` folder.
 
 ## Development
 

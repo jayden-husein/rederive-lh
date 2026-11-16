@@ -35,3 +35,23 @@ built `dist\` files, which users extract into `<plugins directory>\rederive-lh\d
    on the repo fills the form, and the user attaches the zip.
 5. **Verify.** `releases/latest` resolves to the new tag, and the downloaded zip
    has the same SHA-256 as `release\`'s.
+
+**Installed copies update from this.** The plugin's updater (`src\updates.ts`)
+reads `releases/latest` and offers its tag when it is a higher `x.y.z` than the
+running version. So the release must:
+
+- not be a draft or a prerelease (`releases/latest` skips both), with a tag of
+  the form `vX.Y.Z` matching the manifest's version;
+- carry the asset under exactly `rederive-lh-<version>.zip`, holding flat files
+  whose `manifest.json` has that version (`npm run package` makes this);
+- have GitHub's `sha256:` digest on the asset (GitHub adds it on upload). The
+  updater refuses a zip without one or whose bytes don't match.
+
+Plugins can't read the app's version, so the updater refuses a release whose
+`minAppVersion` is higher than the running version's and tells the user to update
+LearnHarness and install by hand. Raise `minAppVersion` only when a release
+truly needs it, and say so in the notes.
+
+The updater lives in the plugin, so a release whose backend fails to activate
+also breaks updating: those users must replace `dist\` by hand. That is what
+step 2's CI run guards.
