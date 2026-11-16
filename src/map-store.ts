@@ -82,11 +82,13 @@ export interface ReadyCourse {
   problems: CourseProblem[];
   /** Untouched problems first, then skipped ones; null once all are done. */
   next: CourseProblem | null;
-  /** A rebuild is under way; this map stays current until it finishes. */
-  building: boolean;
 }
 
-/** A repo's decision map seen from the learner's side (see GLOSSARY.md). */
+/**
+ * A repo's decision map seen from the learner's side (see GLOSSARY.md). While a build is
+ * running the course is "building", even with an older map on disk: a rebuild means start
+ * fresh, so the old map and its progress are never handed out (in-app test, 2026-11-16).
+ */
 export type Course = { state: "none" } | { state: "building" } | ReadyCourse;
 
 /** What `record` did. Without a map nothing is written. */
@@ -107,7 +109,7 @@ function stateOf(id: string, progress: LogProgress): ProblemState {
 }
 
 /** The whole course from one read of the log, so its problem states and `next` agree. */
-function courseFrom(map: StoredMap, progress: LogProgress, parts: Parts, building: boolean): ReadyCourse {
+function courseFrom(map: StoredMap, progress: LogProgress, parts: Parts): ReadyCourse {
   const problems: CourseProblem[] = map.decisions.map((decision) => ({
     decision,
     tag: parts ? tagDecision(decision, parts) : null,
@@ -116,7 +118,7 @@ function courseFrom(map: StoredMap, progress: LogProgress, parts: Parts, buildin
   const plan = planProblems(map.decisions, parts);
   const picked = nextProblemIn(plan.map((p) => ({ ...p, id: p.decision.id })), progress);
   const next = picked ? problems.find((p) => p.decision.id === picked.id) ?? null : null;
-  return { state: "ready", map, problems, next, building };
+  return { state: "ready", map, problems, next };
 }
 
 export class MapStore {
@@ -185,9 +187,9 @@ export class MapStore {
   course(repoId: string, parts: Parts = null): Promise<Course> {
     return this.serialize(async () => {
       const map = await this.adopt(repoId);
-      const building = this.building(repoId);
-      if (!map) return { state: building ? "building" : "none" };
-      return courseFrom(map, parseLog(await readLog(this.logFile(repoId))), parts, building);
+      if (this.building(repoId)) return { state: "building" };
+      if (!map) return { state: "none" };
+      return courseFrom(map, parseLog(await readLog(this.logFile(repoId))), parts);
     });
   }
 
@@ -201,8 +203,9 @@ export class MapStore {
     const parts = options.parts ?? null;
     return this.serialize(async () => {
       const map = await this.adopt(repoId);
-      const building = this.building(repoId);
-      if (!map) return { state: building ? "building" : "none" };
+      // During a rebuild nothing is logged: adoption sets the old log aside anyway.
+      if (this.building(repoId)) return { state: "building" };
+      if (!map) return { state: "none" };
       const decision = map.decisions.find((d) => d.id === id);
       if (!decision) throw new Error(`No problem ${id} in this map.`);
       const file = this.logFile(repoId);
@@ -216,7 +219,7 @@ export class MapStore {
       const separator = existing === "" || existing.endsWith("\n\n") ? "" : existing.endsWith("\n") ? "\n" : "\n\n";
       const updated = `${existing}${separator}${section}`;
       await writeFileAtomic(file, updated);
-      return { state: "logged", decision, course: courseFrom(map, parseLog(updated), parts, building) };
+      return { state: "logged", decision, course: courseFrom(map, parseLog(updated), parts) };
     });
   }
 

@@ -52,14 +52,21 @@ test("a build under way with no map yet: the course and record say building", as
   assert.deepEqual(await store.record("r1", "D1", "skipped"), { state: "building" });
 });
 
-test("a rebuild under way keeps the current map ready and flags building", async () => {
+test("a rebuild under way hides the old map and logs nothing until the new map lands", async () => {
   const tasks = [succeededTask("t1", "r1", "2026-11-14T10:00:00.000Z")];
-  const { store } = storeWith(tasks, "rebuilding");
-  assert.equal(ready(await store.course("r1")).building, false);
-  tasks.push({ ...succeededTask("t2", "r1", "2026-11-14T11:00:00.000Z"), status: "running" } as PluginTaskSnapshot);
+  const { store, logFile } = storeWith(tasks, "rebuilding");
+  await store.record("r1", "D1", entry);
+  const running = { ...succeededTask("t2", "r1", "2026-11-14T11:00:00.000Z"), status: "running" } as PluginTaskSnapshot;
+  tasks.push(running);
+  // Start fresh: the old map and its progress are never handed out while the new one builds.
+  assert.deepEqual(await store.course("r1"), { state: "building" });
+  assert.deepEqual(await store.record("r1", "D2", entry), { state: "building" });
+  assert.doesNotMatch(readFileSync(logFile(), "utf8"), /## D2\./);
+  // Once it finishes, the new map is adopted with an empty log.
+  Object.assign(running, { status: "succeeded" });
   const course = ready(await store.course("r1"));
-  assert.equal(course.map.taskId, "t1");
-  assert.equal(course.building, true);
+  assert.equal(course.map.taskId, "t2");
+  assert.ok(course.problems.every((p) => p.state === "todo"));
 });
 
 test("a finished build is adopted once into map.json and map.md", async () => {

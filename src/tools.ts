@@ -287,7 +287,7 @@ export function createStatusTool(deps: ToolDeps, context: PluginToolContext): Ag
         mode: state.mode,
         repo: state.repo ? { id: state.repo.id, name: state.repo.name, kind: state.repo.kind, path: state.repo.path } : null,
         mapExists: ready !== null,
-        mapBuilding: course?.state === "building" || (ready?.building ?? false),
+        mapBuilding: course?.state === "building",
         parts: state.parts,
         nextProblemId: next?.decision.id ?? null,
       };
