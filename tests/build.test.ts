@@ -255,6 +255,7 @@ test("after the button, the next teaching message gets the restart note, cleared
   const context = (sessionKind = "teaching") => ({
     sessionId: "chat-1",
     sessionKind,
+    channels: ["content"],
     signal: new AbortController().signal,
     onAccepted: (cb: () => unknown) => accepted.push(cb),
   });
@@ -266,9 +267,9 @@ test("after the button, the next teaching message gets the restart note, cleared
   await accepted[0]!();
   assert.deepEqual(calls.at(-1), ["clear-start", { chatId: "chat-1", stamp: "s1" }]);
 
-  // Practice chats, other submission types, no pending start, or a failed lookup: unchanged.
+  // Practice chats, an answer with no thinking box, no pending start, or a failed lookup: unchanged.
   assert.equal(await interceptor.intercept(message, context("practice")), undefined);
-  assert.equal(await interceptor.intercept({ type: "answer" }, context()), undefined);
+  assert.equal(await interceptor.intercept({ type: "answer" }, { ...context(), channels: ["answer"] }), undefined);
   pending = null;
   assert.equal(await interceptor.intercept(message, context()), undefined);
   failLookup = true;

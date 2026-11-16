@@ -12,7 +12,17 @@ import { cardText, RENDERED_TOOLS } from "./cards.ts";
 import { registerDesignCards } from "./design-view.ts";
 import { sourceFromDraft } from "./draft.ts";
 import { registerUpdates, type UpdatesUi } from "./update-view.ts";
-import { LOG_ACTION_NAME, MAX_SOURCE_CHARS, OPERATIONS, restartNote, type LogView, type PendingStart, type StartRederiveResult } from "./names.ts";
+import {
+  DEFAULT_REPO_HAS_TOKEN,
+  LOG_ACTION_NAME,
+  MAX_SOURCE_CHARS,
+  OPERATIONS,
+  restartNote,
+  withoutCredentials,
+  type LogView,
+  type PendingStart,
+  type StartRederiveResult,
+} from "./names.ts";
 // Type-only: settings.ts is Node code and must stay out of the browser bundle.
 import type { DefaultMode, Settings } from "./settings.ts";
 
@@ -98,7 +108,8 @@ function registerSettingsPage(ctx: PluginFrontendContext, settings: { current: S
       description: "Folder path or git URL suggested when you don't name a repo. Leave empty for none.",
       value: s.defaultRepo,
       disabled: !loaded,
-      validate: tooLong,
+      // Refused as typed, so the message goes away with the token (a refused save's message stays).
+      validate: (value) => tooLong(value) ?? (withoutCredentials(value.trim()) !== value.trim() ? DEFAULT_REPO_HAS_TOKEN : undefined),
       onChange: (value) => save({ defaultRepo: value }),
     },
     {
@@ -350,14 +361,20 @@ function registerRestartNote(ctx: PluginFrontendContext): void {
   ctx.registerSubmissionInterceptor({
     id: "rederive-restart-note",
     async intercept(input, context) {
-      if (input.type !== "text" || context.sessionKind !== "teaching") return undefined;
+      if (context.sessionKind !== "teaching" || input.type === "thinking" || input.type === "plugin-problem-submission") return undefined;
+      // While a card waits there is no message box, so the note rides on the thinking sent with the answer.
+      const channels: readonly string[] = context.channels;
+      const channel = input.type === "text" ? "content" : (["readingThinking", "thinking"] as const).find((c) => channels.includes(c));
+      if (!channel) return undefined;
       const chatId = context.sessionId;
       // A failed lookup must never block the learner's message: send it unchanged.
       const pending = await ctx.call<PendingStart | null>(OPERATIONS.pendingStart, { chatId }).catch(() => null);
       if (!pending || context.signal.aborted) return undefined;
       context.onAccepted(() => ctx.call(OPERATIONS.clearStart, { chatId, stamp: pending.stamp }).then(() => undefined));
-      const text = input.content.text.trim() ? `${restartNote(pending.repoName)}\n\n${input.content.text}` : restartNote(pending.repoName);
-      return { type: "text", content: { ...input.content, text } };
+      const note = restartNote(pending.repoName);
+      const withNote = <C extends { readonly text: string }>(content: C): C => ({ ...content, text: content.text.trim() ? `${note}\n\n${content.text}` : note });
+      if (input.type === "text") return { type: "text", content: withNote(input.content) };
+      return channel === "thinking" ? { ...input, thinking: withNote(input.thinking) } : { ...input, readingThinking: withNote(input.readingThinking) };
     },
   });
 }

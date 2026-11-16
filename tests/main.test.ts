@@ -48,8 +48,68 @@ async function openSettings() {
     return row.onChange(value);
   };
   const shown = () => Object.fromEntries(rows.map((r) => [r.key, (r as { value: unknown }).value]));
-  return { saves, change, shown };
+  const shownRow = (key: keyof Settings) => rows.find((r) => r.key === key);
+  return { saves, change, shown, shownRow };
 }
+
+/** Activate the frontend in a chat whose "Rederive this repo" press hasn't reached the tutor yet. */
+function restartInterceptor() {
+  const cleared: unknown[] = [];
+  let intercept: (input: unknown, context: unknown) => Promise<unknown> = async () => undefined;
+  const ctx = {
+    signal: new AbortController().signal,
+    call: (operation: string, input: unknown) => {
+      if (operation === OPERATIONS.pendingStart) return Promise.resolve({ repoName: "kilo", stamp: "s1" });
+      if (operation === OPERATIONS.clearStart) return Promise.resolve(void cleared.push(input));
+      return Promise.reject(new Error(`not faked: ${operation}`));
+    },
+    registerSubmissionInterceptor: (definition: { intercept: typeof intercept }) => {
+      intercept = definition.intercept;
+    },
+  };
+  const anyCtx = new Proxy(ctx, { get: (target, key) => (key in target ? target[key as keyof typeof ctx] : () => () => undefined) });
+  activate(anyCtx as unknown as PluginFrontendContext);
+  const send = async (input: object, channels: string[]) => {
+    const accepted: (() => unknown)[] = [];
+    const context = { sessionKind: "teaching", sessionId: "c1", channels, signal: new AbortController().signal, onAccepted: (fn: () => unknown) => accepted.push(fn) };
+    return { out: await intercept(input, context), accepted };
+  };
+  return { send, cleared };
+}
+
+const NOTE = "(Rederive this repo: start fresh with kilo.)";
+const empty = { text: "", images: [] };
+
+test("the restart note goes in front of the learner's next message and is cleared once accepted", async () => {
+  const { send, cleared } = restartInterceptor();
+  const { out, accepted } = await send({ type: "text", content: { text: "go", images: [] } }, ["content"]);
+  assert.deepEqual(out, { type: "text", content: { text: `${NOTE}\n\ngo`, images: [] } });
+  await accepted[0]!();
+  assert.deepEqual(cleared, [{ chatId: "c1", stamp: "s1" }]);
+});
+
+test("with a card waiting, the restart note rides on the thinking sent with the answer", async () => {
+  const { send } = restartInterceptor();
+  const answer = { type: "plugin-question-answer", answer: { design: "a queue" }, answerImages: [], thinking: empty, readingThinking: { text: "hmm", images: [] } };
+  const design = await send(answer, ["answer", "readingThinking"]);
+  assert.deepEqual(design.out, { ...answer, readingThinking: { text: `${NOTE}\n\nhmm`, images: [] } });
+  assert.equal(design.accepted.length, 1);
+  const pick = await send({ ...answer, readingThinking: empty }, ["answer", "thinking"]);
+  assert.deepEqual(pick.out, { ...answer, readingThinking: empty, thinking: { text: NOTE, images: [] } });
+  // No thinking box on the card: the answer goes out unchanged and the note waits.
+  const bare = await send(answer, ["answer"]);
+  assert.equal(bare.out, undefined);
+  assert.equal(bare.accepted.length, 0);
+});
+
+test("the default repo field refuses a token as it is typed, and accepts the URL without it", async () => {
+  const { shownRow } = await openSettings();
+  const validate = (shownRow("defaultRepo") as { validate(value: string): string | undefined }).validate;
+  assert.match(validate("https://me:token@example.com/x") ?? "", /password or token/);
+  assert.equal(validate("https://example.com/x"), undefined);
+  assert.equal(validate(""), undefined);
+  assert.equal(validate("x".repeat(1001)), "Too long.");
+});
 
 test("a second settings change made before the first returns builds on it", async () => {
   const { saves, change, shown } = await openSettings();

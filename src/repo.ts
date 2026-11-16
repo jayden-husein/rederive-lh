@@ -6,6 +6,7 @@ import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { GitError, isGitWorkTree, LAZY_FETCH, runGit } from "./git.ts";
+import { withoutCredentials } from "./names.ts";
 import { readHead } from "./paths.ts";
 
 export type RepoSource =
@@ -47,11 +48,7 @@ export function parseSource(raw: string): RepoSource {
   return { kind: "local", path: resolve(path) };
 }
 
-/** The URL without "user:token@": the form to store, show and hash. Only the clone gets the rest. */
-export function withoutCredentials(url: string): string {
-  // Up to the last "@" before the path: a token may hold an unescaped "@" itself.
-  return url.replace(/^(https:\/\/)[^/]*@/i, "$1");
-}
+export { withoutCredentials };
 
 function normalizeUrl(url: string): string {
   let out = withoutCredentials(url.trim()).replace(/\/+$/, "").replace(/\.git$/i, "");

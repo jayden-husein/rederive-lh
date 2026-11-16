@@ -3,8 +3,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { writeFileAtomic } from "./atomic.ts";
-import { MAX_SOURCE_CHARS } from "./names.ts";
-import { withoutCredentials } from "./repo.ts";
+import { DEFAULT_REPO_HAS_TOKEN, MAX_SOURCE_CHARS, withoutCredentials } from "./names.ts";
 
 /**
  * How the prober routes a chat about a codebase.
@@ -79,9 +78,7 @@ export class SettingsStore {
 
   async save(value: unknown): Promise<Settings> {
     const next = parseSettings(value);
-    if (hasCredentials(next.defaultRepo)) {
-      throw new Error("The default repo's URL holds a password or token. Remove it: the default repo is shown to the model on every turn.");
-    }
+    if (hasCredentials(next.defaultRepo)) throw new Error(DEFAULT_REPO_HAS_TOKEN);
     const run = this.queue.then(async () => {
       await writeFileAtomic(this.file, `${JSON.stringify(next, null, 2)}\n`);
       this.cache = next;

@@ -1,4 +1,4 @@
-// Names shared by the backend and the browser bundle. Keep this file free of imports so
+// Names and small rules shared by the backend and the browser bundle. Keep this file free of imports so
 // the frontend never pulls in Node-only modules.
 
 export const TOOL_NAMES = {
@@ -25,6 +25,16 @@ export const RESTART_NOTE_PREFIX = "(Rederive this repo: start fresh with";
 export function restartNote(repoName: string): string {
   return `${RESTART_NOTE_PREFIX} ${repoName}.)`;
 }
+
+/** The URL without "user:token@": the form to store, show and hash. Only the clone gets the rest. */
+export function withoutCredentials(url: string): string {
+  // Up to the last "@" before the path: a token may hold an unescaped "@" itself.
+  return url.replace(/^(https:\/\/)[^/]*@/i, "$1");
+}
+
+/** Why a default repo with a token is refused: by the settings field as typed, and by the backend on save. */
+export const DEFAULT_REPO_HAS_TOKEN =
+  "The default repo's URL holds a password or token. Remove it: the default repo is shown to the model on every turn.";
 
 /** Longest repo path or URL accepted from settings or the top-bar action. */
 export const MAX_SOURCE_CHARS = 1000;
