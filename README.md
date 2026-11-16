@@ -8,7 +8,7 @@ solve, one at a time, and lets you work out the design. Each answer is graded, a
 the tutor adds the next constraint until your design holds up or breaks. It never
 hands you the answer.
 
-![A design card: the question, your answer and a confidence slider](docs/screenshots/design-card.png)
+![Demo: a design answer is typed, graded "Holds up so far", and the tutor adds the next constraint](docs/screenshots/demo.gif)
 
 It brings the method of [rederive](https://github.com/EricJujianZou/rederive), a
 Claude Code skill by Eric Zou, into LearnHarness.
@@ -38,6 +38,9 @@ Claude Code skill by Eric Zou, into LearnHarness.
    You never see the map; the tutor gets one problem at a time.
 3. **You design.** The tutor poses the bare problem, as if the code did not
    exist. You answer on a card and say how sure you are.
+
+   ![A design card: the question, your answer and a confidence slider](docs/screenshots/design-card.png)
+
 4. **Your answer is graded.** *Holds up*, *Partly* or *Breaks*, with the
    constraint it fails. Then the tutor adds the next constraint.
 
