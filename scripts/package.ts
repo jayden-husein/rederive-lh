@@ -25,7 +25,9 @@ const files = readdirSync(dist, { withFileTypes: true });
 const dirs = files.filter((f) => !f.isFile()).map((f) => f.name);
 if (dirs.length > 0) throw new Error(`dist/ should hold only files; found ${dirs.join(", ")}`);
 
-const entries = files.map((f) => ({ name: f.name, data: readFileSync(join(dist, f.name)) }));
+const entries = files
+  .map((f) => ({ name: f.name, data: readFileSync(join(dist, f.name)) }))
+  .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 const out = join(root, "release", `${manifest.id}-${manifest.version}.zip`);
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, createZip(entries));

@@ -3,11 +3,11 @@
 // imported files, files that import the most, edges among the central files) and the
 // external packages used most. Reads files only through `resolveInsideRoot`, never
 // follows links out of the repo, and never runs anything from it.
-import { lstat, open, readdir } from "node:fs/promises";
+import { lstat, readdir } from "node:fs/promises";
 import { join, posix } from "node:path";
 import { GitError, runGit } from "./git.ts";
 import { detectVendored, vendoredRoot } from "./filters.ts";
-import { resolveInsideRoot } from "./paths.ts";
+import { readHead, resolveInsideRoot } from "./paths.ts";
 
 const C_EXT = [".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx"];
 const JS_EXT = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
@@ -22,8 +22,10 @@ export const TEST =
   /(^|\/)(tests?|__tests__|spec)\/|(^|\/)test_[^/]*$|[._](test|spec)\.[a-z]+$|_test\.(go|py|c|cc|cpp)$/;
 const BUILD_FILES = /(^|\/)(Makefile|makefile|GNUmakefile|CMakeLists\.txt|meson\.build|Cargo\.toml|go\.mod|pyproject\.toml|setup\.py)$/;
 
+// The scan from "import"/"export" to "from" stops at ; = or (, which end the statement:
+// without that, every export in a big file with no quotes scans to the end of the file.
 const JS_IMPORT =
-  /(?:import\s[^'"]*?from\s*|import\s*\(?\s*|require\s*\(\s*|export\s[^'"]*?from\s*)['"]([^'"]+)['"]/g;
+  /(?:import\s[^'";=(]*?from\s*|import\s*\(?\s*|require\s*\(\s*|export\s[^'";=(]*?from\s*)['"]([^'"]+)['"]/g;
 const PY_FROM = /^\s*from\s+(\.*[\w.]*)\s+import\s+([\w*, ()]+)/gm;
 const PY_IMPORT = /^\s*import\s+([\w., ]+)/gm;
 const GO_IMPORT_BLOCK = /import\s*\(([^)]*)\)/g;
@@ -71,7 +73,8 @@ async function walk(root: string, signal?: AbortSignal, limit = 50_000): Promise
       const child = rel ? `${rel}/${entry.name}` : entry.name;
       if (entry.isSymbolicLink()) continue;
       if (entry.isDirectory()) {
-        if (!entry.name.startsWith(".")) queue.push(child);
+        // Skipped here, not afterwards: node_modules alone can fill the limit before src/ is reached.
+        if (!entry.name.startsWith(".") && !NOISE.test(`${child}/`)) queue.push(child);
       } else if (entry.isFile()) {
         out.push(child);
       }
@@ -85,14 +88,7 @@ async function readCapped(root: string, rel: string): Promise<string> {
   try {
     const real = await resolveInsideRoot(root, rel);
     if (!(await lstat(real)).isFile()) return "";
-    const handle = await open(real, "r");
-    try {
-      const buffer = Buffer.alloc(READ_LIMIT);
-      const { bytesRead } = await handle.read(buffer, 0, READ_LIMIT, 0);
-      return buffer.subarray(0, bytesRead).toString("utf8");
-    } finally {
-      await handle.close();
-    }
+    return (await readHead(real, READ_LIMIT)).toString("utf8");
   } catch {
     return "";
   }
@@ -113,7 +109,7 @@ function norm(path: string): string {
 }
 
 /** Highest count first, then path, so output is stable. */
-function byCount<T extends string>(entries: Iterable<[T, number]>): [T, number][] {
+export function byCount<T extends string>(entries: Iterable<[T, number]>): [T, number][] {
   return [...entries].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
 }
 
@@ -176,7 +172,10 @@ export async function analyzeStructure(root: string, options: StructureOptions =
   const resolveJs = (src: string, spec: string): string | null => {
     if (!spec.startsWith(".")) return null;
     const base = norm(posix.join(posix.dirname(src), spec));
+    // TypeScript with Node-style modules writes "./b.js" for b.ts.
+    const stem = base.replace(/\.[cm]?jsx?$/, "");
     const candidates = [base, ...JS_EXT.map((e) => base + e), ...JS_EXT.map((e) => `${base}/index${e}`)];
+    if (stem !== base) candidates.push(...JS_EXT.map((e) => stem + e));
     return candidates.find((c) => fileset.has(c)) ?? null;
   };
 

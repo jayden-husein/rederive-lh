@@ -11,7 +11,7 @@ import { summarizeRepo } from "./history.ts";
 import type { LogEntry } from "./log.ts";
 import { PICK_QUESTION } from "./design-card.ts";
 import { confidenceSchema } from "./grading.ts";
-import { letteredOptions, type Decision, type StoredMap } from "./map.ts";
+import { letteredOptions, type StoredMap } from "./map.ts";
 import { BUILD_MAP_WORKER, pendingBuild, repoDataDir, type BuildMapInput, type CourseProblem, type MapStore, type ProblemState, type TaskLister } from "./map-store.ts";
 import { BUILD_LIMITS, buildMapPrompt } from "./worker.ts";
 import {
@@ -23,6 +23,7 @@ import {
   readmeSummary,
   repoId,
   topLevelFolders,
+  withoutCredentials,
   type Ownership,
 } from "./repo.ts";
 import { modeRules } from "./instructions.ts";
@@ -118,7 +119,7 @@ export async function openRepoForChat(
   const [isGit, ownership, summary, before, course, folders] = await Promise.all([
     isGitWorkTree(path, signal),
     guessOwnership(path, signal),
-    readmeSummary(path),
+    readmeSummary(path).catch(() => null),
     deps.store.getChat(chatId),
     deps.maps.course(id),
     topLevelFolders(path).catch(() => []),
@@ -130,16 +131,18 @@ export async function openRepoForChat(
     earlierMap = { logged: course.problems.filter((p) => p.state !== "todo").length };
   }
 
+  // A token in the URL stays out of sessions.json and out of the result the agent reads.
+  const shownSource = source.kind === "url" ? withoutCredentials(source.url) : source.path;
   const repo = await deps.store.setRepo(chatId, {
     id,
     name: displayName(source),
     kind: source.kind,
-    source: source.kind === "url" ? source.url : source.path,
+    source: shownSource,
     path,
   });
 
   const lines = [
-    `Opened repo "${repo.name}" (${source.kind === "url" ? `cloned from ${source.url}` : path}).`,
+    `Opened repo "${repo.name}" (${source.kind === "url" ? `cloned from ${shownSource}` : path}).`,
     clone === "pulled" ? "Existing clone updated." : "",
     warning ?? "",
     isGit ? "" : "Not a git repository: history is unavailable, structure only.",
@@ -235,7 +238,7 @@ export interface StatusDetails {
   mapBuilding: boolean;
   /** Which parts the learner wrote, when recorded. */
   parts: string[] | null;
-  /** First problem with no log entry; null with no map or when all are logged. */
+  /** Next problem to run: untouched ones first, then skipped ones; null with no map or when all are done. */
   nextProblemId: string | null;
 }
 
@@ -365,10 +368,11 @@ export function createSetAuthorshipTool(deps: ToolDeps, context: PluginToolConte
       const signal = combinedSignal(deps, toolSignal);
       checkAborted(signal);
       const { repo } = await chatWithRepo(deps, context.chatId);
-      if (!input.parts.every(isRepoRelative)) {
+      const parts = [...new Set(input.parts.map(normalizePart))];
+      // Checked as written and as normalized: quotes around "../x" hide the ".." until they are stripped.
+      if (![...input.parts, ...parts].every(isRepoRelative)) {
         throw new Error('Give paths relative to the repo root, without ".." (e.g. "querier/").');
       }
-      const parts = [...new Set(input.parts.map(normalizePart))];
       // The whole repo is not a group project: back to plain map order.
       if (parts.includes("")) {
         await deps.store.setParts(context.chatId, null);
@@ -435,6 +439,8 @@ export function buildMapDefinition(deps: ToolDeps): PluginBackgroundTool<typeof 
       const signal = deps.signal;
       checkAborted(signal);
       const { repo } = await chatWithRepo(deps, context.chatId);
+      // The folder can be gone since it was opened (moved, or WSL not running).
+      await assertDirectory(repo.path);
       if (pendingBuild(deps.listTasks, repo.id)) throw new Error("A map for this repo is already being built. Wait for its result.");
       if (!input.rebuild && (await deps.maps.hasMap(repo.id))) {
         throw new Error(`This repo already has a map. Call ${TOOL_NAMES.nextProblem} instead, or pass rebuild: true only if the learner wants to start fresh.`);
@@ -448,6 +454,7 @@ export function buildMapDefinition(deps: ToolDeps): PluginBackgroundTool<typeof 
         repoName: repo.name,
         repoPath: repo.path,
         builtFrom,
+        ...(repo.kind === "url" ? { cloned: true } : {}),
         ...(input.rebuild && input.keepProgress ? { keepProgress: true } : {}),
       };
       return {
@@ -459,7 +466,7 @@ export function buildMapDefinition(deps: ToolDeps): PluginBackgroundTool<typeof 
         options: { maxTokens: BUILD_LIMITS.maxTokens },
       };
     },
-    // Side-effect free: the map is persisted when a tool next asks for it (MapStore.current).
+    // Side-effect free: the MapStore adopts the map on the next course, record or logView call.
     format(outcome) {
       if (outcome.status !== "succeeded") {
         return { text: `Building the decision map ${outcome.status}: ${outcome.error.message}`, data: { status: outcome.status } };

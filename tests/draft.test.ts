@@ -16,4 +16,5 @@ test("quoted paths win over bare ones, and the last one wins", () => {
 test("text with no path or URL gives nothing", () => {
   assert.equal(sourceFromDraft(""), null);
   assert.equal(sourceFromDraft("why is it built like this? `queue`"), null);
+  assert.equal(sourceFromDraft("docs at http://example.com/x"), null, "http:// can't be opened, so it isn't offered");
 });

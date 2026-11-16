@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { join } from "node:path";
 import { after, test } from "node:test";
 import { createZip } from "../scripts/zip.ts";
+import { renameWithRetry } from "../src/atomic.ts";
 import type { UpdateState } from "../src/names.ts";
 import { checkPackage, isNewer, parseRelease, removeLeftoverStages, replaceDist, Updater, type Fetch } from "../src/updates.ts";
 import { readZip } from "../src/unzip.ts";
@@ -155,6 +156,32 @@ test("a failure before the swap leaves the old dist in place", async () => {
   await assert.rejects(replaceDist(dist, files));
   assert.equal(readFileSync(join(dist, "backend.cjs"), "utf8"), "// backend 0.2.0");
   assert.deepEqual(readdirSync(plugin).sort(), ["data", "dist"]);
+});
+
+/** renameWithRetry, except that the moves whose number (1-based) is in `failing` throw. */
+function failingRename(...failing: number[]) {
+  let call = 0;
+  return async (from: string, to: string, retries?: number) => {
+    if (failing.includes(++call)) throw new Error(`move ${call} failed`);
+    await renameWithRetry(from, to, retries);
+  };
+}
+
+test("when the new dist can't be moved in, the old one is put back", async () => {
+  const { plugin, dist } = installed();
+  const files = checkPackage(packageZip("0.3.0"), EXPECT_030);
+  await assert.rejects(replaceDist(dist, files, failingRename(2)), /move 2 failed/);
+  assert.equal(readFileSync(join(dist, "backend.cjs"), "utf8"), "// backend 0.2.0");
+  assert.deepEqual(readdirSync(plugin).sort(), ["data", "dist"], "no staging folder left behind");
+});
+
+test("when the old dist can't be put back either, it is kept and the error says where", async () => {
+  const { plugin, dist } = installed();
+  const files = checkPackage(packageZip("0.3.0"), EXPECT_030);
+  await assert.rejects(replaceDist(dist, files, failingRename(2, 3)), /couldn't be put back\. It is kept at .*previous/);
+  const [stage] = readdirSync(plugin).filter((name) => name.startsWith(".update-"));
+  assert.ok(stage, "the staging folder stays");
+  assert.equal(readFileSync(join(plugin, stage, "previous", "backend.cjs"), "utf8"), "// backend 0.2.0");
 });
 
 test("replacing refuses anything but a dist folder, and a dist holding data", async () => {

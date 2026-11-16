@@ -5,12 +5,11 @@
 import { realpath } from "node:fs/promises";
 import { GitError, isGitWorkTree, runGit, type GitOptions } from "./git.ts";
 import { detectVendored, findBinaryFiles, isBuildOutput, vendoredRoot } from "./filters.ts";
-import { listRepoFiles, summarizeStructure } from "./structure.ts";
+import { byCount, listRepoFiles, summarizeStructure, TEST } from "./structure.ts";
 
 /** Lockfiles, build output and vendored code drown out the real changes. */
 export const NOISE =
   /(^|\/)(node_modules|vendor|dist|build|\.next|target|third_party)\/|(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|Cargo\.lock|poetry\.lock|go\.sum|\.min\.(js|css)|\.map|\.snap|\.svg|\.png|\.jpg|\.lock)$/;
-const TESTS = /(^|\/)(tests?|__tests__|spec)\/|(^|\/)test_|[._](test|spec)\.[a-z]+$/;
 /** Same pattern as history.sh, passed to `git log -i -E --grep`. */
 export const DESIGN_GREP =
   "introduc|refactor|rewrit|replac|migrat|switch(ed)? (to|from)|redesign|architect|instead of|move (to|from)|extract|split|remove|drop|deprecat|perf|cache|async|concurren|schema|protocol|v[0-9]+\\.0";
@@ -75,14 +74,14 @@ function splitLines(out: string): string[] {
   return out.split(/\r?\n/).filter((l) => l !== "");
 }
 
-/** The history sections, in the same order as history.sh. Exported for tests. */
-export async function summarizeHistory(
+/** The history sections, in the same order as history.sh. */
+async function summarizeHistory(
   root: string,
   files: readonly string[],
   signal?: AbortSignal,
 ): Promise<{ text: string; vendored: Set<string> }> {
-  // Git must not fetch missing blobs from a partial (--filter=blob:none) clone's remote.
-  const base: GitOptions = { cwd: root, signal, env: { GIT_NO_LAZY_FETCH: "1" }, maxBuffer: 64 * 1024 * 1024, timeoutMs: 60_000 };
+  // runGit never fetches missing blobs, so this stays fast on a --filter=blob:none clone.
+  const base: GitOptions = { cwd: root, signal, maxBuffer: 64 * 1024 * 1024, timeoutMs: 60_000 };
   const git = (args: string[]) => runGit(["-c", "core.quotePath=false", ...args], base);
 
   // When the root is a subfolder of a larger repo, read only that folder's history.
@@ -103,24 +102,35 @@ export async function summarizeHistory(
     }
   };
 
-  // One pass over every commit for counts, dates, authors and the first commits.
-  const commits = splitLines(await git(["log", "--format=%h%x09%ad%x09%aN%x09%s", "--date=short", ...scope])).map((line) => {
-    const [sha = "", date = "", author = "", ...subject] = line.split("\t");
-    return { sha, date, author, subject: subject.join("\t") };
-  });
+  // One pass over every commit for counts, dates, authors and the first commits. On the
+  // largest repos (hundreds of thousands of commits) it passes the output cap: go on without.
+  let commits: { sha: string; date: string; author: string; subject: string }[] = [];
+  let commitsError: GitError | null = null;
+  try {
+    commits = splitLines(await git(["log", "--format=%h%x09%ad%x09%aN%x09%s", "--date=short", ...scope])).map((line) => {
+      const [sha = "", date = "", author = "", ...subject] = line.split("\t");
+      return { sha, date, author, subject: subject.join("\t") };
+    });
+  } catch (error) {
+    if (!(error instanceof GitError) || error.code === "aborted") throw error;
+    commitsError = error;
+  }
   const head = (await git(["rev-parse", "--short", "HEAD"])).trim();
   const authors = new Set(commits.map((c) => c.author)).size;
   out.push("## Repo");
   out.push(
-    `commits: ${commits.length} | first: ${commits.at(-1)?.date ?? "?"} | last: ${commits[0]?.date ?? "?"} | authors: ${authors} | HEAD: ${head}`,
+    commitsError
+      ? `commits: unknown (the full commit list couldn't be read: ${commitsError.message}) | HEAD: ${head}`
+      : `commits: ${commits.length} | first: ${commits.at(-1)?.date ?? "?"} | last: ${commits[0]?.date ?? "?"} | authors: ${authors} | HEAD: ${head}`,
   );
   if (prefix) out.push(`note: this folder is ${prefix.replace(/\/$/, "")}/ inside a larger repo; history covers this folder only`);
   const shallow = (await git(["rev-parse", "--is-shallow-repository"]).catch(rethrowAbort(""))).trim();
   if (shallow === "true") out.push("WARNING: shallow clone, early history is missing.");
 
-  await section("## First 15 commits", async () =>
-    commits.slice(-15).reverse().map((c) => `${c.sha} ${c.date} ${c.subject}`),
-  );
+  await section("## First 15 commits", async () => {
+    if (commitsError) throw commitsError;
+    return commits.slice(-15).reverse().map((c) => `${c.sha} ${c.date} ${c.subject}`);
+  });
 
   await section("## Commits whose message names a design change (newest 40)", async () =>
     splitLines(
@@ -168,12 +178,12 @@ export async function summarizeHistory(
     for (const [commit, paths] of perCommit) {
       const kept = paths.filter((p) => !skip(p));
       for (const p of kept) changed.set(p, (changed.get(p) ?? 0) + 1);
-      sizes.push([commit, kept.filter((p) => !TESTS.test(p)).length]);
+      sizes.push([commit, kept.filter((p) => !TEST.test(p)).length]);
     }
     fileStats = { sizes, changed };
     return fileStats;
   };
-  const statNote = commits.length > MAX_FILE_STAT_COMMITS ? [`(from the newest ${MAX_FILE_STAT_COMMITS} commits)`] : [];
+  const statNote = commitsError || commits.length > MAX_FILE_STAT_COMMITS ? [`(from the newest ${MAX_FILE_STAT_COMMITS} commits)`] : [];
 
   await section("## Largest commits by files touched, ignoring tests and generated files (top 15)", async () => {
     const { sizes } = await loadFileStats();
@@ -183,7 +193,7 @@ export async function summarizeHistory(
 
   await section("## Most changed files (top 20)", async () => {
     const { changed } = await loadFileStats();
-    return [...statNote, ...ranked(changed).slice(0, 20).map(([f, n]) => `${String(n).padStart(4)}  ${f}`)];
+    return [...statNote, ...byCount(changed).slice(0, 20).map(([f, n]) => `${String(n).padStart(4)}  ${f}`)];
   });
 
   await section("## Design docs present", async () =>
@@ -199,12 +209,8 @@ export async function summarizeHistory(
       const key = slash === -1 ? f : `${f.slice(0, slash)}/`;
       layout.set(key, (layout.get(key) ?? 0) + 1);
     }
-    return ranked(layout).slice(0, 25).map(([k, n]) => `${String(n).padStart(4)}  ${k}`);
+    return byCount(layout).slice(0, 25).map(([k, n]) => `${String(n).padStart(4)}  ${k}`);
   });
 
   return { text: out.join("\n"), vendored };
-}
-
-function ranked(counter: Map<string, number>): [string, number][] {
-  return [...counter].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
 }

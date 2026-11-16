@@ -7,7 +7,7 @@
 //   --width 0           don't cut long lines (default 300)
 //   --grep "partner"    only lines containing the text, in full
 import { parseArgs } from "node:util";
-import { DEFAULT_CHATS_DIR, readChat, renderChat } from "./transcripts.ts";
+import { DEFAULT_CHATS_DIR, parseSince, readChat, renderChat } from "./transcripts.ts";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -31,14 +31,10 @@ if (!Number.isInteger(width) || width < 0) fail(`--width must be a whole number:
 const tail = values.tail === undefined ? undefined : Number(values.tail);
 if (tail !== undefined && (!Number.isInteger(tail) || tail < 1)) fail(`--tail must be a positive whole number: ${values.tail}`);
 
-/** "30m", "2h", or an ISO time, as milliseconds since the epoch. */
-function parseSince(value: string): number {
-  const ago = /^(\d+)([mh])$/.exec(value);
-  if (ago) return Date.now() - Number(ago[1]) * (ago[2] === "h" ? 3_600_000 : 60_000);
-  const at = Date.parse(value);
-  return Number.isNaN(at) ? fail(`--since must be like 30m, 2h or an ISO time: ${value}`) : at;
-}
-const since = values.since === undefined ? undefined : parseSince(values.since);
+const since =
+  values.since === undefined
+    ? undefined
+    : (parseSince(values.since) ?? fail(`--since must be like 30m, 2h or an ISO time: ${values.since}`));
 
 const chat = await readChat(values.chats ?? DEFAULT_CHATS_DIR, positionals[0] ?? "latest");
 console.log(`${chat.id ?? "?"}  created ${chat.createdAt ?? "?"}  updated ${chat.updatedAt ?? "?"}`);

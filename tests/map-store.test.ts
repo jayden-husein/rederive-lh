@@ -162,6 +162,17 @@ test("a log left without a readable map.json is set aside, not inherited", async
   assert.equal(existsSync(logFile()), false);
 });
 
+test("an unreadable map.json doesn't cost the progress logged on that same map", async () => {
+  const tasks = [succeededTask("t1", "r1", "2026-11-14T10:00:00.000Z")];
+  const { store, mapFile } = storeWith(tasks, "lost-map");
+  logged(await store.record("r1", "D1", entry));
+  await store.record("r1", "D2", "skipped");
+  writeFileSync(mapFile(), "{ not json");
+  assert.deepEqual(states(await store.course("r1")).slice(0, 3), ["D1:done", "D2:skipped", "D3:todo"]);
+  // The log as it was is still kept aside.
+  assert.equal((await store.logView("r1")).archived.length, 1);
+});
+
 test("record appends in rederive's format, refuses duplicates and unknown ids", async () => {
   const tasks = [succeededTask("t1", "r1", "2026-11-14T10:00:00.000Z")];
   const { store, logFile } = storeWith(tasks, "logging");

@@ -378,6 +378,7 @@ test("a group project: own problems first, tagged, and the log says whose part",
 test("[\".\"] clears the parts, and absolute or UNC parts are refused", async () => {
   const t = tools("chat-g");
   await assert.rejects(t.setAuthorship.execute("2", { parts: [String.raw`\\server\share\x`] }), /relative to the repo root/);
+  await assert.rejects(t.setAuthorship.execute("2", { parts: ['"../secret"'] }), /relative to the repo root/, "quotes don't hide a ..");
   const cleared = await t.setAuthorship.execute("3", { parts: ["."] });
   assert.deepEqual(cleared.details, { parts: [], missing: [] });
   assert.equal((await t.status.execute("4", {})).details.parts, null);

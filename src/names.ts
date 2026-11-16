@@ -40,6 +40,7 @@ export const OPERATIONS = {
   getSettings: "get-settings",
   saveSettings: "save-settings",
   startRederive: "start-rederive",
+  cancelStart: "cancel-start",
   getLog: "get-log",
   pendingStart: "pending-start",
   clearStart: "clear-start",

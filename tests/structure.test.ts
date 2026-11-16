@@ -53,6 +53,7 @@ test("walks non-git folders, skipping dot folders and noise", async () => {
   const files = await listRepoFiles(project);
   assert.ok(files.includes("web/index.ts"));
   assert.ok(!files.some((f) => f.startsWith(".hidden/")));
+  assert.ok(!files.some((f) => f.startsWith("node_modules/")), "noise folders are skipped during the walk, before its file limit");
   const data = await analyzeStructure(realpathSync.native(project), { files });
   assert.ok(!data.sources.some((f) => f.startsWith("node_modules/") || f.endsWith(".d.ts")));
 });
@@ -70,6 +71,24 @@ test("resolves JS/TS, Python, Go and Rust imports like structure.py", async () =
     assert.ok(data.external.has(pkg), `missing external ${pkg}`);
   }
   assert.equal(data.external.has("std"), false);
+});
+
+test("an import of ./b.js finds b.ts, as TypeScript's Node-style modules write it", async () => {
+  const esm = join(workspace, "esm");
+  write(esm, {
+    "src/a.ts": 'import { b } from "./b.js";\nimport "./c.mjs";\n',
+    "src/b.ts": "export const b = 1;\n",
+    "src/c.mjs": "export {};\n",
+  });
+  const data = await analyzeStructure(realpathSync.native(esm));
+  assert.deepEqual(edgesOf(data, "src/a.ts"), ["src/b.ts", "src/c.mjs"]);
+});
+
+test("an export statement doesn't pair with a quoted 'from' further down the file", async () => {
+  const far = join(workspace, "far");
+  write(far, { "a.ts": "export const A = 1;\n// taken from './b'\n", "b.ts": "export const B = 2;\n" });
+  const data = await analyzeStructure(realpathSync.native(far));
+  assert.deepEqual(edgesOf(data, "a.ts"), []);
 });
 
 test("entry points come from package.json, names and main functions", async () => {

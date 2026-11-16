@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { writeFileAtomic } from "./atomic.ts";
 import { MAX_SOURCE_CHARS } from "./names.ts";
+import { withoutCredentials } from "./repo.ts";
 
 /**
  * How the prober routes a chat about a codebase.
@@ -42,6 +43,10 @@ export function parseSettings(value: unknown): Settings {
   return { defaultMode: defaultMode as DefaultMode, defaultRepo: defaultRepo.trim(), checkUpdates };
 }
 
+function hasCredentials(source: string): boolean {
+  return withoutCredentials(source) !== source;
+}
+
 export class SettingsStore {
   readonly file: string;
   private cache: Settings | null = null;
@@ -51,7 +56,7 @@ export class SettingsStore {
     this.file = join(dataDirectory, "settings.json");
   }
 
-  /** Saved settings, or the defaults when none are saved or the file is unreadable. */
+  /** Saved settings, or the defaults when the file is missing or its contents are invalid; other read errors throw. */
   async get(): Promise<Settings> {
     if (this.cache) return { ...this.cache };
     let text: string;
@@ -63,6 +68,8 @@ export class SettingsStore {
     }
     try {
       this.cache = parseSettings(JSON.parse(text));
+      // Saved before save() refused these: the default repo goes into the prober's instructions.
+      if (hasCredentials(this.cache.defaultRepo)) this.cache.defaultRepo = "";
     } catch {
       // A hand-edited or damaged file falls back to defaults; the next save replaces it.
       this.cache = { ...DEFAULT_SETTINGS };
@@ -72,6 +79,9 @@ export class SettingsStore {
 
   async save(value: unknown): Promise<Settings> {
     const next = parseSettings(value);
+    if (hasCredentials(next.defaultRepo)) {
+      throw new Error("The default repo's URL holds a password or token. Remove it: the default repo is shown to the model on every turn.");
+    }
     const run = this.queue.then(async () => {
       await writeFileAtomic(this.file, `${JSON.stringify(next, null, 2)}\n`);
       this.cache = next;

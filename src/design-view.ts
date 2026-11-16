@@ -21,6 +21,7 @@ import {
   stepConfidence,
   DESIGN_QUESTION,
   gradeView,
+  MAX_DESIGN_CHARS,
   PICK_QUESTION,
   readConfidence,
   SHOWN_CONTRACT_VERSIONS,
@@ -69,6 +70,8 @@ function listenForArrows(root: HTMLElement, slider: ConfidenceSlider, signal: Ab
   const onKey = (event: KeyboardEvent) => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
     if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing) return;
+    // A version 1 card has no slider: the keys stay with the text box.
+    if (slider.value() === null) return;
     if (!(event.target instanceof Node) || !root.contains(event.target)) return;
     event.preventDefault();
     event.stopPropagation();
@@ -259,6 +262,7 @@ function mountChoiceEditor(ui: Ui, container: HTMLElement, payload: DesignPayloa
 function mountDesignEditor(container: HTMLElement, props: PluginQuestionEditorProps): PluginQuestionEditorHandle {
   const root = cardRoot(container);
   const box = textBox(container.ownerDocument, "Your design", "Describe your design…");
+  box.maxLength = MAX_DESIGN_CHARS;
   root.append(box);
   let disposed = false;
   let active = props.active;
@@ -287,6 +291,8 @@ function mountDesignEditor(container: HTMLElement, props: PluginQuestionEditorPr
     appendTranscript: (text) => {
       if (disposed || !active) return;
       appendSpeech(box, text);
+      // maxLength only stops typing; dictation sets the value directly.
+      if (box.value.length > MAX_DESIGN_CHARS) box.value = box.value.slice(0, MAX_DESIGN_CHARS);
       publish();
     },
     dispose: () => {

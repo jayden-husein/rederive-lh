@@ -2,9 +2,8 @@
 // committed build output. Both would otherwise crowd the learner's own design out of
 // the summary (a course library dominating "most imported", binaries dominating
 // "most changed").
-import { open } from "node:fs/promises";
 import { posix } from "node:path";
-import { resolveInsideRoot } from "./paths.ts";
+import { readHead, resolveInsideRoot } from "./paths.ts";
 
 /** Folder names that always mean someone else's code. */
 const VENDOR_DIR = /(^|\/)(external|extern|3rdparty|third[-_]party)\//i;
@@ -101,14 +100,7 @@ export async function findBinaryFiles(root: string, files: readonly string[], si
   for (const rel of candidates) {
     signal?.throwIfAborted();
     try {
-      const handle = await open(await resolveInsideRoot(root, rel), "r");
-      try {
-        const buffer = Buffer.alloc(SNIFF_BYTES);
-        const { bytesRead } = await handle.read(buffer, 0, SNIFF_BYTES, 0);
-        if (buffer.subarray(0, bytesRead).includes(0)) binaries.add(rel);
-      } finally {
-        await handle.close();
-      }
+      if ((await readHead(await resolveInsideRoot(root, rel), SNIFF_BYTES)).includes(0)) binaries.add(rel);
     } catch {
       // Missing, unreadable or outside the root: not something we can call binary.
     }

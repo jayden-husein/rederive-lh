@@ -63,9 +63,16 @@ function registerSettingsPage(ctx: PluginFrontendContext, settings: { current: S
   };
 
   const save = async (patch: Partial<Settings>) => {
+    const before = settings.current;
+    // Applied at once: a second change made before this one returns must build on it.
+    settings.current = { ...before, ...patch };
     try {
-      const saved = await ctx.call<Settings>(OPERATIONS.saveSettings, { ...settings.current, ...patch });
-      settings.current = saved;
+      settings.current = await ctx.call<Settings>(OPERATIONS.saveSettings, settings.current);
+    } catch (error) {
+      // Take back only this change; a later one may already sit on top of it.
+      const undo = Object.fromEntries(Object.keys(patch).map((key) => [key, before[key as keyof Settings]]));
+      settings.current = { ...settings.current, ...undo };
+      throw error;
     } finally {
       // Publish the accepted value: the saved one, or the previous one if the save failed
       // (the host reports the error).
@@ -158,6 +165,10 @@ function openStartDialog(ctx: PluginFrontendContext, chatId: string, initialSour
         let source = initialSource;
         let busy = false;
         let done = false;
+        // Cancel or Escape while the repo opens: ctx.call takes no signal, so tell the backend.
+        signal.addEventListener("abort", () => {
+          if (busy) void ctx.call(OPERATIONS.cancelStart, { chatId }).catch(() => undefined);
+        }, { once: true });
         const fieldRow = (disabled: boolean): PluginSettingsRow => ({
           type: "text",
           key: "source",

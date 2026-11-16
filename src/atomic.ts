@@ -11,11 +11,12 @@ export async function writeFileAtomic(path: string, contents: string): Promise<v
   const dir = dirname(path);
   await mkdir(dir, { recursive: true });
   const temp = join(dir, `.${basename(path)}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`);
-  await writeFile(temp, contents, "utf8");
   try {
+    await writeFile(temp, contents, "utf8");
     await renameWithRetry(temp, path);
   } catch (error) {
-    await rm(temp, { force: true });
+    // Also after a failed write (disk full), so no .tmp file is left behind.
+    await rm(temp, { force: true }).catch(() => undefined);
     throw error;
   }
 }

@@ -13,5 +13,7 @@ CLAUDE.md
 HANDOFF.md
 docs/history.md
 docs/host-facts.md
+CODEBASE_ANALYSIS.md
+FIX_PLAN.md
 scripts/hooks/
 tests/hooks.test.ts

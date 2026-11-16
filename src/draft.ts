@@ -3,7 +3,8 @@
 // backtick-quoted path, so quoted candidates win over bare words. Browser-safe: no imports.
 
 // A POSIX path needs two segments, so "/help" doesn't count.
-const LOOKS_LIKE_SOURCE = /^(\\\\|[A-Za-z]:[\\/]|\/[^/\s]+\/|~\/|https?:\/\/|ssh:\/\/|git@)/;
+// Only what parseSource (repo.ts) opens: http:// is refused there, so it isn't offered here.
+const LOOKS_LIKE_SOURCE = /^(\\\\|[A-Za-z]:[\\/]|\/[^/\s]+\/|~\/|https:\/\/|ssh:\/\/|git@)/;
 
 /** The last path or URL in `text` (the most recently attached one), or null. */
 export function sourceFromDraft(text: string): string | null {

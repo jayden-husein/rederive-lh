@@ -1,7 +1,7 @@
 // Path confinement for reading inside a learner's repo. Every path the map worker
 // touches goes through `resolveInsideRoot`, which rejects `..`, absolute paths and
 // symlinks/junctions that resolve outside the repo root.
-import { realpath } from "node:fs/promises";
+import { open, realpath } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep, win32 } from "node:path";
 
 export class PathEscapeError extends Error {
@@ -11,15 +11,14 @@ export class PathEscapeError extends Error {
   }
 }
 
-/** Case-insensitive comparison for Windows drive paths; UNC paths into WSL keep case. */
-function comparable(path: string): string {
-  return process.platform === "win32" && !path.startsWith("\\\\") ? path.toLowerCase() : path;
-}
-
-/** True when `child` is `root` or lies beneath it. Both must already be absolute. */
+/**
+ * True when `child` is `root` or lies beneath it. Both must already be absolute.
+ * On Windows `relative` ignores case, for drive and UNC paths alike.
+ */
 export function isWithin(root: string, child: string): boolean {
-  const rel = relative(comparable(root), comparable(child));
-  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+  const rel = relative(root, child);
+  // ".." or "../x" leaves the root; a folder named "..x" does not.
+  return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
 }
 
 /**
@@ -44,6 +43,19 @@ export async function resolveInsideRoot(root: string, relativePath: string): Pro
     throw new PathEscapeError(`Path links outside the repo: ${relativePath}`);
   }
   return real;
+}
+
+/** The first `limit` bytes of a file, or all of it when it is shorter. */
+export async function readHead(path: string, limit: number): Promise<Buffer> {
+  const handle = await open(path, "r");
+  try {
+    const buffer = Buffer.alloc(Math.min((await handle.stat()).size, limit));
+    if (buffer.length === 0) return buffer;
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    return buffer.subarray(0, bytesRead);
+  } finally {
+    await handle.close();
+  }
 }
 
 /** Display form of a path relative to the root, always with forward slashes. */

@@ -5,14 +5,13 @@
 import type { AssistantMessage, Context } from "@earendil-works/pi-ai";
 import type { ModelCatalogResponse, PluginInferenceRequest, PluginQuestionTypeDefinition } from "learnharness-plugin-api";
 import { Type } from "typebox";
-import { CONFIDENCE_STOPS, DESIGN_QUESTION, PICK_QUESTION, type DesignAnswer, type DesignGrade, type DesignPayload, type Verdict } from "./design-card.ts";
+import { CONFIDENCE_STOPS, DESIGN_QUESTION, MAX_DESIGN_CHARS, PICK_QUESTION, type DesignAnswer, type DesignGrade, type DesignPayload, type Verdict } from "./design-card.ts";
 import { hasMarkedOptions, letteredOptions, MAX_CONSTRAINTS, OPTION_LETTERS, type Decision, type DecisionOption, type StoredMap } from "./map.ts";
 import type { ChatState } from "./sessions.ts";
 import { TOOL_NAMES } from "./names.ts";
 
 /** How long the learner's Submit waits for the model before the answer saves ungraded. */
 export const GRADING_TIMEOUT_MS = 20_000;
-const MAX_DESIGN_CHARS = 4000;
 
 // Two card types share these fields and the grading below: the design card (free text,
 // no host thinking box, dictation into the box) and the pick card (the problem's lettered

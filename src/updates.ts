@@ -172,8 +172,9 @@ export function installKind(directory: string): UpdateState["install"] {
  * Replace `directory` (the installed dist/) with `files`. Stages the new files beside it,
  * moves the old dist/ aside, moves the new one in, and puts the old one back if that fails.
  * Old files are removed rather than merged. The sibling data/ is never touched.
+ * `rename` is a parameter so tests can fail a move.
  */
-export async function replaceDist(directory: string, files: Map<string, Buffer>): Promise<void> {
+export async function replaceDist(directory: string, files: Map<string, Buffer>, rename: typeof renameWithRetry = renameWithRetry): Promise<void> {
   if (basename(directory) !== "dist") throw new Error(`Refusing to replace ${directory}: not a dist directory.`);
   const stat = await lstat(directory);
   if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error(`Refusing to replace ${directory}: not a plain directory.`);
@@ -191,14 +192,14 @@ export async function replaceDist(directory: string, files: Map<string, Buffer>)
     await mkdir(next);
     for (const [name, data] of files) await writeFile(join(next, name), data);
     // Antivirus and the search indexer often hold freshly written files for seconds.
-    await renameWithRetry(directory, previous, SWAP_RETRIES);
+    await rename(directory, previous, SWAP_RETRIES);
     movedOld = true;
-    await renameWithRetry(next, directory, SWAP_RETRIES);
+    await rename(next, directory, SWAP_RETRIES);
     installed = true;
   } catch (error) {
     if (movedOld && !installed) {
       try {
-        await renameWithRetry(previous, directory, SWAP_RETRIES);
+        await rename(previous, directory, SWAP_RETRIES);
       } catch {
         keepStage = true;
         throw new Error(`The update failed and the old version couldn't be put back. It is kept at ${previous}.`, { cause: error });

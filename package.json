@@ -21,7 +21,7 @@
     "leak-check": "node scripts/leak-check.ts",
     "render-diagrams": "node scripts/render-diagrams.ts",
     "check": "npm run typecheck && npm test",
-    "prepare": "git config core.hooksPath .githooks"
+    "prepare": "git config core.hooksPath .githooks || echo Not a git checkout: the commit hook was not installed"
   },
   "devDependencies": {
     "@earendil-works/pi-agent-core": "1.4.0",

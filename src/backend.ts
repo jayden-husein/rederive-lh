@@ -121,11 +121,27 @@ export async function activate(ctx: PluginBackendContext): Promise<void> {
 
   // Top-bar action: open the repo, switch this chat to rederive and flag a restart. The
   // frontend puts a note in front of the next message; rederive_status also reports it.
+  // Closing the dialog while the repo opens cancels it, a running clone included.
+  const opening = new Map<string, AbortController>();
   ctx.handle(OPERATIONS.startRederive, async (input): Promise<StartRederiveResult> => {
     const { chatId, source } = parseStartRederive(input);
-    const opened = await openRepoForChat(deps, chatId, source, ctx.signal);
-    await store.requestStart(chatId);
-    return { repoName: opened.details.repo.name, warning: opened.details.warning ?? null };
+    opening.get(chatId)?.abort();
+    const cancel = new AbortController();
+    opening.set(chatId, cancel);
+    try {
+      const signal = AbortSignal.any([ctx.signal, cancel.signal]);
+      const opened = await openRepoForChat(deps, chatId, source, signal);
+      // Cancelled after the repo was recorded: at least leave the mode and the restart alone.
+      if (signal.aborted) throw new Error("Cancelled.");
+      await store.requestStart(chatId);
+      return { repoName: opened.details.repo.name, warning: opened.details.warning ?? null };
+    } finally {
+      if (opening.get(chatId) === cancel) opening.delete(chatId);
+    }
+  });
+  ctx.handle(OPERATIONS.cancelStart, (input) => {
+    opening.get(parseChatId(input))?.abort();
+    return null;
   });
 
   // The restart note: the frontend asks before each message in a teaching chat and

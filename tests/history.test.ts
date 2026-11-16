@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { summarizeRepo } from "../src/history.ts";
@@ -215,6 +216,21 @@ test("an empty git repo counts as having no history", async () => {
   writeFileSync(join(empty, "a.c"), "int main(void) { return 0; }\n");
   const text = await summarizeRepo(empty);
   assert.match(text, /^NOT_A_GIT_REPO/);
+});
+
+test("a commit list that can't be read costs only the sections that need it", async () => {
+  const broken = makeGitRepo(join(workspace, "broken"), [
+    { files: { "a.c": "int main(void) { return 0; }\n" }, message: "first" },
+    { files: { "b.c": "\n" }, message: "second" },
+  ]);
+  // Stands in for a log too long for the output cap: git log fails, HEAD still resolves.
+  const first = execFileSync("git", ["rev-list", "--max-parents=0", "HEAD"], { cwd: broken, encoding: "utf8" }).trim();
+  rmSync(join(broken, ".git", "objects", first.slice(0, 2), first.slice(2)), { force: true });
+  const text = await summarizeRepo(broken);
+  assert.match(text, /^commits: unknown \(the full commit list couldn't be read: git log failed/m);
+  assert.match(section(text, "## First 15 commits")[0]!, /^\(unavailable: /);
+  assert.match(text, /^# Code structure$/m);
+  assert.match(text, /a\.c \(1 lines, imported by 0\)/);
 });
 
 test("output is capped", async () => {

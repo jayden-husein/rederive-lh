@@ -56,6 +56,9 @@ test("isWithin does not treat a name prefix as containment", () => {
   assert.equal(isWithin(root, join(workspace, "repo-sibling.txt")), false);
   assert.equal(isWithin(root, root), true);
   assert.equal(isWithin(root, join(root, "a", "b")), true);
+  assert.equal(isWithin(root, join(root, "..cache", "x")), true, 'a folder named "..cache" is inside');
+  assert.equal(isWithin(root, workspace), false);
+  if (process.platform === "win32") assert.equal(isWithin(root.toUpperCase(), join(root, "src")), true);
 });
 
 test("displayRelative uses forward slashes", () => {

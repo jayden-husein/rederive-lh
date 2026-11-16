@@ -25,6 +25,9 @@ export const PICK_QUESTION = {
   contractVersion: CARD_CONTRACT_VERSION,
 } as const;
 
+/** Longest free-text design: the answer schema refuses more, so the box stops there too. */
+export const MAX_DESIGN_CHARS = 4000;
+
 /**
  * The confidence slider's stops, the same as the native quiz's (LearnHarness 0.6.x):
  * how sure the learner is that their answer holds up, in percent. 50 is a coin flip and

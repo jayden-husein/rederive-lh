@@ -1,8 +1,8 @@
 // Per-chat state in <dataDirectory>/sessions.json: the chat's mode and which repo it
 // is studying, plus the registry of known repos. Writes are serialized and atomic.
-import { readFile, rename } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { writeFileAtomic } from "./atomic.ts";
+import { renameWithRetry, writeFileAtomic } from "./atomic.ts";
 import type { PendingStart } from "./names.ts";
 
 export const MODES = ["rederive", "onboarding", "normal"] as const;
@@ -77,7 +77,7 @@ export class SessionStore {
 
   /** Run `fn` after every earlier operation finishes, so read-modify-write never interleaves. */
   private serialize<T>(fn: () => Promise<T>): Promise<T> {
-    const run = this.queue.then(fn, fn);
+    const run = this.queue.then(fn);
     this.queue = run.catch(() => undefined);
     return run;
   }
@@ -101,7 +101,7 @@ export class SessionStore {
     if (!isSessionsFile(parsed)) {
       // Keep the unreadable file for inspection instead of overwriting it.
       const stamp = this.now().toISOString().replace(/[:.]/g, "-");
-      await rename(this.file, `${this.file}.corrupt-${stamp}`);
+      await renameWithRetry(this.file, `${this.file}.corrupt-${stamp}`);
       parsed = emptyFile();
     }
     this.cache = parsed as SessionsFile;
@@ -194,13 +194,6 @@ export class SessionStore {
       if (data.chats[chatId]?.repoId !== repo.id) delete chat.parts;
       data.chats[chatId] = chat;
       return { ...record };
-    });
-  }
-
-  async getRepo(repoId: string): Promise<RepoRecord | null> {
-    return this.serialize(async () => {
-      const repo = (await this.load()).repos[repoId];
-      return repo ? { ...repo } : null;
     });
   }
 }

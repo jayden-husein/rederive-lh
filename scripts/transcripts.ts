@@ -72,6 +72,14 @@ export async function readChat(chatsDir: string, idOrLatest: string): Promise<Ch
   return latest;
 }
 
+/** "30m", "2h", or an ISO time, as milliseconds since the epoch; null when unparseable. */
+export function parseSince(value: string): number | null {
+  const ago = /^(\d+)([mh])$/.exec(value);
+  if (ago) return Date.now() - Number(ago[1]) * (ago[2] === "h" ? 3_600_000 : 60_000);
+  const at = Date.parse(value);
+  return Number.isNaN(at) ? null : at;
+}
+
 /** Every string inside a tool's arguments, in order (card options, nested assessments, ...). */
 export function stringsIn(value: unknown): string[] {
   if (typeof value === "string") return [value];

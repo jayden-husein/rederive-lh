@@ -1,15 +1,15 @@
 // The `build-map` worker: a bounded background task that reads the repo (read-only,
 // confined to its root) and submits a decision map. Instructions adapt rederive's
 // SKILL.md §3 "Build the map".
-import { open, readdir, realpath, stat } from "node:fs/promises";
+import { readdir, realpath, stat } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { PluginWorkerContext, PluginWorkerDefinition } from "learnharness-plugin-api";
 import { Type } from "typebox";
-import { runGit } from "./git.ts";
+import { LAZY_FETCH, runGit } from "./git.ts";
 import { DecisionMapResultSchema, MAX_DECISIONS, MIN_DECISIONS, validateMapResult } from "./map.ts";
 import { BUILD_MAP_WORKER, type BuildMapInput } from "./map-store.ts";
-import { displayRelative, resolveInsideRoot } from "./paths.ts";
+import { displayRelative, readHead, resolveInsideRoot } from "./paths.ts";
 
 export const MAX_FILE_CHARS = 40_000;
 const MAX_DIR_ENTRIES = 400;
@@ -106,8 +106,11 @@ function gitPath(relativePath: string): string {
   return p;
 }
 
-/** Read-only tools for one task, all confined to the repo root. Exported for tests. */
-export function createWorkerTools(repoPath: string, taskSignal?: AbortSignal): AgentTool<any>[] {
+/**
+ * Read-only tools for one task, all confined to the repo root. `cloned`: the repo is our
+ * own clone, so git may fetch the file contents it left out. Exported for tests.
+ */
+export function createWorkerTools(repoPath: string, taskSignal?: AbortSignal, cloned = false): AgentTool<any>[] {
   let rootPromise: Promise<string> | null = null;
   const root = () => (rootPromise ??= realpath(repoPath));
   const signalFor = (s?: AbortSignal) => (s && taskSignal ? AbortSignal.any([s, taskSignal]) : s ?? taskSignal);
@@ -116,7 +119,10 @@ export function createWorkerTools(repoPath: string, taskSignal?: AbortSignal): A
   const confined = async (path: string) => {
     const r = await root();
     const real = await resolveInsideRoot(r, path);
-    return { root: r, real, rel: displayRelative(r, real) };
+    const rel = displayRelative(r, real);
+    // .git/config can hold a clone URL's token, and nothing in .git is the repo's design.
+    if (/^\.git(\/|$)/i.test(rel)) throw new Error("The .git folder is off limits. Use the git tools for history.");
+    return { root: r, real, rel };
   };
 
   const readFileTool: AgentTool<typeof ReadFileParameters> = {
@@ -131,15 +137,7 @@ export function createWorkerTools(repoPath: string, taskSignal?: AbortSignal): A
       if (!info.isFile()) throw new Error(`${rel} is not a file.`);
       // Read at most a few times the cap from the start; enough for paging through source.
       const limit = Math.min(info.size, MAX_FILE_CHARS * 8);
-      const handle = await open(real, "r");
-      let raw: Buffer;
-      try {
-        const buffer = Buffer.alloc(limit);
-        const { bytesRead } = await handle.read(buffer, 0, limit, 0);
-        raw = buffer.subarray(0, bytesRead);
-      } finally {
-        await handle.close();
-      }
+      const raw = await readHead(real, limit);
       if (raw.subarray(0, 8000).includes(0)) return { content: text(`${rel} looks binary; skipped.`), details: { path: rel } };
       const lines = raw.toString("utf8").split(/\r?\n/);
       const start = (input.startLine ?? 1) - 1;
@@ -147,7 +145,12 @@ export function createWorkerTools(repoPath: string, taskSignal?: AbortSignal): A
       let i = start;
       for (; i < lines.length; i++) {
         const line = `${i + 1}: ${lines[i]}\n`;
-        if (out.length + line.length > MAX_FILE_CHARS) break;
+        if (out.length + line.length > MAX_FILE_CHARS) {
+          // One line longer than the cap (minified code): show its start and move on, or
+          // "continue with startLine" would name this same line forever.
+          if (out === "") out = `${line.slice(0, MAX_FILE_CHARS)}\n[line ${++i} cut at ${MAX_FILE_CHARS} characters]\n`;
+          break;
+        }
         out += line;
       }
       const more = i < lines.length ? `\n[more: continue with startLine ${i + 1}]` : limit < info.size ? "\n[file is larger than the readable part]" : "";
@@ -196,7 +199,7 @@ export function createWorkerTools(repoPath: string, taskSignal?: AbortSignal): A
         signal: signalFor(signal),
         timeoutMs: 20_000,
         maxBuffer: 4 * 1024 * 1024,
-        env: { GIT_LITERAL_PATHSPECS: "1" },
+        env: { GIT_LITERAL_PATHSPECS: "1", ...(cloned ? LAZY_FETCH : {}) },
       }),
       MAX_GIT_CHARS,
       "git output",
@@ -248,7 +251,10 @@ export function createBuildMapWorker(): PluginWorkerDefinition {
     id: BUILD_MAP_WORKER,
     instructions: WORKER_INSTRUCTIONS,
     resultSchema: DecisionMapResultSchema,
-    tools: (context: PluginWorkerContext) => createWorkerTools((context.input as BuildMapInput).repoPath, context.signal),
+    tools: (context: PluginWorkerContext) => {
+      const input = context.input as BuildMapInput;
+      return createWorkerTools(input.repoPath, context.signal, input.cloned === true);
+    },
     validateResult: (result) => validateMapResult(result),
   };
 }

@@ -2,10 +2,11 @@
 // or a git URL that we clone into the plugin's data directory. Never writes to, or runs
 // code from, the learner's repo.
 import { createHash, randomBytes } from "node:crypto";
-import { mkdir, open, readdir, rename, rm, stat } from "node:fs/promises";
+import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
-import { GitError, isGitWorkTree, runGit } from "./git.ts";
+import { GitError, isGitWorkTree, LAZY_FETCH, runGit } from "./git.ts";
+import { readHead } from "./paths.ts";
 
 export type RepoSource =
   | { kind: "local"; path: string }
@@ -46,8 +47,14 @@ export function parseSource(raw: string): RepoSource {
   return { kind: "local", path: resolve(path) };
 }
 
+/** The URL without "user:token@": the form to store, show and hash. Only the clone gets the rest. */
+export function withoutCredentials(url: string): string {
+  // Up to the last "@" before the path: a token may hold an unescaped "@" itself.
+  return url.replace(/^(https:\/\/)[^/]*@/i, "$1");
+}
+
 function normalizeUrl(url: string): string {
-  let out = url.trim().replace(/\/+$/, "").replace(/\.git$/i, "");
+  let out = withoutCredentials(url.trim()).replace(/\/+$/, "").replace(/\.git$/i, "");
   out = out.replace(/^(https:\/\/|ssh:\/\/)([^/]+)/i, (_m, scheme: string, host: string) => scheme.toLowerCase() + host.toLowerCase());
   out = out.replace(/^([\w.-]+@)([\w.-]+):/, (_m, user: string, host: string) => user + host.toLowerCase() + ":");
   return out;
@@ -107,14 +114,16 @@ export async function cloneOrPull(
     ? [...NETWORK_TRANSPORTS, "-c", "protocol.file.allow=always"]
     : NETWORK_TRANSPORTS;
   const checkout = join(repoDir, "checkout");
+  // Git quotes the URL in its errors; keep a token in it out of what the agent sees.
+  const scrub = (message: string) => message.split(url).join(withoutCredentials(url));
   const exists = await stat(checkout).then((s) => s.isDirectory(), () => false);
   if (exists && (await isGitWorkTree(checkout, signal))) {
     try {
-      await runGit([...TRANSPORT_ARGS, "pull", "--ff-only", "--no-rebase", "--quiet"], { cwd: checkout, signal, timeoutMs: 120_000 });
+      await runGit([...TRANSPORT_ARGS, "pull", "--ff-only", "--no-rebase", "--quiet"], { cwd: checkout, signal, timeoutMs: 120_000, env: LAZY_FETCH });
       return { path: checkout, action: "pulled" };
     } catch (error) {
       if (error instanceof GitError && (error.code === "aborted" || error.code === "missing")) throw error;
-      return { path: checkout, action: "pull-failed", warning: `Couldn't update the clone, using the existing copy. ${(error as Error).message}` };
+      return { path: checkout, action: "pull-failed", warning: `Couldn't update the clone, using the existing copy. ${scrub((error as Error).message)}` };
     }
   }
   // Clone into a temp sibling and rename, so a failed clone never looks like a real one.
@@ -124,11 +133,15 @@ export async function cloneOrPull(
   try {
     await runGit(
       [...TRANSPORT_ARGS, "clone", "--filter=blob:none", "--no-recurse-submodules", "--quiet", "--", url, partial],
-      { cwd: repoDir, signal, timeoutMs: 300_000 },
+      // The checkout step fetches the files the blob filter left out.
+      { cwd: repoDir, signal, timeoutMs: 300_000, env: LAZY_FETCH },
     );
     await rename(partial, checkout);
   } catch (error) {
-    await rm(partial, { recursive: true, force: true });
+    // Windows can hold a just-stopped git's files for a moment. A leftover folder must
+    // not hide why the clone failed.
+    await rm(partial, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }).catch(() => undefined);
+    if (error instanceof Error) error.message = scrub(error.message);
     throw error;
   }
   return { path: checkout, action: "cloned" };
@@ -142,15 +155,7 @@ export async function readmeSummary(root: string, maxChars = 600): Promise<strin
   const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
   const file = entries.find((e) => e.isFile() && README.test(e.name));
   if (!file) return null;
-  const handle = await open(join(root, file.name), "r");
-  let text: string;
-  try {
-    const buffer = Buffer.alloc(README_READ_LIMIT);
-    const { bytesRead } = await handle.read(buffer, 0, README_READ_LIMIT, 0);
-    text = buffer.subarray(0, bytesRead).toString("utf8");
-  } finally {
-    await handle.close();
-  }
+  const text = (await readHead(join(root, file.name), README_READ_LIMIT)).toString("utf8");
   return summarizeReadme(text, maxChars);
 }
 

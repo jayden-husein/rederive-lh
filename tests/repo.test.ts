@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { after, before, test } from "node:test";
-import { GitError, isGitWorkTree, runGit } from "../src/git.ts";
+import { GitError, isGitWorkTree, LAZY_FETCH, runGit } from "../src/git.ts";
 import {
   cloneOrPull,
   displayName,
@@ -13,6 +13,7 @@ import {
   readmeSummary,
   repoId,
   summarizeReadme,
+  withoutCredentials,
 } from "../src/repo.ts";
 import { makeGitRepo, removeDir, SAMPLE_README, tempDir } from "./helpers.ts";
 
@@ -139,6 +140,70 @@ test("git wrapper reports failures and cancellation as GitError", async () => {
   const controller = new AbortController();
   controller.abort();
   await assert.rejects(runGit(["log"], { cwd: ownRepo, signal: controller.signal }), (e) => e instanceof GitError && e.code === "aborted");
+});
+
+// Elsewhere git gets SIGTERM and stops its own helpers; Windows ends only the one process.
+test("cancelling stops the processes git started, not only git", { skip: process.platform !== "win32" }, async () => {
+  const marker = join(workspace, "helper-finished").replace(/\\/g, "/");
+  const controller = new AbortController();
+  // git runs the alias in a shell: a stand-in for clone's download helpers.
+  const hanging = runGit(["-c", `alias.hang=!sleep 2 && touch '${marker}'`, "hang"], { cwd: ownRepo, signal: controller.signal });
+  setTimeout(() => controller.abort(), 300);
+  await assert.rejects(hanging, (e) => e instanceof GitError && e.code === "aborted");
+  await new Promise((resolve) => setTimeout(resolve, 2500));
+  assert.equal(existsSync(marker), false, "the shell git started kept running");
+});
+
+test("a git command past its time limit is stopped and reported as a timeout", async () => {
+  await assert.rejects(
+    runGit(["-c", "alias.hang=!sleep 2", "hang"], { cwd: ownRepo, timeoutMs: 300 }),
+    (e) => e instanceof GitError && e.code === "timeout" && /git hang timed out/.test(e.message),
+  );
+});
+
+test("git errors name the subcommand, and a missing folder isn't blamed on git", async () => {
+  await assert.rejects(runGit(["-c", "core.quotePath=false", "rev-parse", "--verify", "no-such-ref"], { cwd: ownRepo }), /git rev-parse failed/);
+  await assert.rejects(
+    runGit(["status"], { cwd: join(workspace, "gone") }),
+    (e) => e instanceof GitError && e.code === "failed" && /Folder not found/.test(e.message),
+  );
+});
+
+test("a repo's own config can't turn on signature checks, which would run its gpg.program", async () => {
+  const repo = makeGitRepo(join(workspace, "signed"), [{ files: { "a.c": "\n" }, message: "initial" }]);
+  await runGit(["config", "log.showSignature", "true"], { cwd: repo });
+  assert.equal((await runGit(["config", "--get", "log.showSignature"], { cwd: repo })).trim(), "false");
+});
+
+test("a folder posing as a partial clone can't make git run its fetch command", async () => {
+  const repo = makeGitRepo(join(workspace, "lazy"), [{ files: { "a.c": "\n" }, message: "initial" }]);
+  const marker = join(workspace, "ran").replace(/\\/g, "/");
+  const head = (await runGit(["rev-parse", "HEAD"], { cwd: repo })).trim();
+  const config = {
+    "core.repositoryformatversion": "1",
+    "extensions.partialClone": "origin",
+    "remote.origin.url": join(workspace, "no-remote"),
+    "remote.origin.promisor": "true",
+    "remote.origin.uploadpack": `touch '${marker}' #`,
+  };
+  for (const [key, value] of Object.entries(config)) await runGit(["config", key, value], { cwd: repo });
+  // A missing object is what makes git fetch.
+  rmSync(join(repo, ".git", "objects", head.slice(0, 2), head.slice(2)), { force: true });
+  await assert.rejects(runGit(["log", "--format=%ae"], { cwd: repo }));
+  assert.equal(existsSync(marker), false);
+  // With lazy fetch allowed the same call runs the command, so the check above is a real one.
+  await assert.rejects(runGit(["log", "--format=%ae"], { cwd: repo, env: LAZY_FETCH }));
+  assert.equal(existsSync(marker), true);
+});
+
+test("a token in an https URL stays out of the repo id and of what is stored and shown", () => {
+  const withToken = "https://me:ghp_token@github.com/user/tiny-search.git";
+  assert.equal(withoutCredentials(withToken), "https://github.com/user/tiny-search.git");
+  assert.equal(withoutCredentials("https://me:to@ken@github.com/user/x"), "https://github.com/user/x", "no part of the token is left");
+  assert.equal(repoId({ kind: "url", url: withToken }), repoId({ kind: "url", url: "https://github.com/user/tiny-search" }));
+  assert.equal(displayName({ kind: "url", url: withToken }), "tiny-search");
+  // The ssh user is a login name, not a secret.
+  assert.equal(withoutCredentials("git@github.com:user/tiny-search.git"), "git@github.com:user/tiny-search.git");
 });
 
 // --- ownership -------------------------------------------------------------

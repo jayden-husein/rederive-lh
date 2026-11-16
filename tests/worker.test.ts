@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
+import { pathToFileURL } from "node:url";
+import { cloneOrPull } from "../src/repo.ts";
 import { buildMapPrompt, createBuildMapWorker, createWorkerTools, MAX_FILE_CHARS } from "../src/worker.ts";
 import { makeGitRepo, removeDir, sampleMapResult, tempDir } from "./helpers.ts";
 
@@ -47,12 +49,24 @@ test("read_file pages big files instead of returning them whole", async () => {
   assert.match(await tools.read_file!({ path: "big.c", startLine: Number(next) }), new RegExp(`^big\\.c\\n${next}: `));
 });
 
+test("read_file cuts a line longer than the cap and moves on to the next one", async () => {
+  writeFileSync(join(repo, "app.min.js"), `${"x".repeat(MAX_FILE_CHARS + 500)}\nlast line\n`);
+  const first = await tools.read_file!({ path: "app.min.js" });
+  assert.match(first, /^app\.min\.js\n1: x+\n\[line 1 cut at \d+ characters\]\n\n\[more: continue with startLine 2\]$/);
+  assert.match(await tools.read_file!({ path: "app.min.js", startLine: 2 }), /^app\.min\.js\n2: last line\n/);
+});
+
 test("tools refuse paths outside the repo", async () => {
   await assert.rejects(tools.read_file!({ path: "../secret.txt" }), /may not contain/);
   await assert.rejects(tools.read_file!({ path: join(workspace, "secret.txt") }), /relative to the repo root/);
   await assert.rejects(tools.list_dir!({ path: ".." }), /may not contain/);
   await assert.rejects(tools.git_log!({ path: "../secret.txt" }), /may not contain/);
   await assert.rejects(tools.git_diff!({ sha: firstSha, path: "../secret.txt" }), /may not contain/);
+});
+
+test("read_file and list_dir refuse .git, where a clone URL's token would sit", async () => {
+  await assert.rejects(tools.read_file!({ path: ".git/config" }), /off limits/);
+  await assert.rejects(tools.list_dir!({ path: ".git" }), /off limits/);
 });
 
 test("list_dir marks folders and hides .git", async () => {
@@ -83,6 +97,23 @@ test("git tools can read the history of a file that no longer exists", async () 
   assert.match(await run(gitLog, { path: "old.c" }), /drop old\n.*add old/);
   const head = execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd: gone, encoding: "utf8" }).trim();
   assert.match(await run(gitDiff, { sha: head, path: "old.c" }), /-int x;/);
+});
+
+test("git_diff fetches a file version the clone left out only in a clone the plugin made", async () => {
+  // The upstream must agree to the blob filter, as GitHub does.
+  execFileSync("git", ["config", "uploadpack.allowFilter", "true"], { cwd: repo });
+  const { path } = await cloneOrPull(pathToFileURL(repo).href, join(workspace, "data"), undefined, { allowFileTransport: true });
+  // The clone holds the checked-out files only: the first commit's index.c is missing.
+  const diff = (cloned: boolean) =>
+    createWorkerTools(path, undefined, cloned).find((t) => t.name === "git_diff")!.execute("id", { sha: firstSha, path: "index/index.c" } as never);
+  await assert.rejects(diff(false), /git show failed/);
+  const out = (await diff(true)).content.map((c) => ("text" in c ? c.text : "")).join("");
+  assert.match(out, /\+int main\(void\) \{ return 0; \}/);
+  // A pull into that clone has to fetch the new commit's files too.
+  makeGitRepo(repo, [{ files: { "index/new.c": "int fresh;\n" }, message: "add new" }]);
+  const pulled = await cloneOrPull(pathToFileURL(repo).href, join(workspace, "data"), undefined, { allowFileTransport: true });
+  assert.equal(pulled.action, "pulled");
+  assert.match(readFileSync(join(path, "index", "new.c"), "utf8"), /^int fresh;/);
 });
 
 test("the worker definition validates results and the prompt fences repo text", async () => {

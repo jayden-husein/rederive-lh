@@ -1,8 +1,8 @@
 // Where maps and logs live: <dataDirectory>/repos/<repoId>/{map.json,map.md,log.md}.
 //
 // The worker's result is the source of truth. A background tool's `format` must be
-// side-effect free, so it can't write map.json. Instead, whenever a tool needs the map,
-// `current()` adopts the newest succeeded build-map task for the repo (task records
+// side-effect free, so it can't write map.json. Instead, every read (`course`, `record`,
+// `logView` and `current`) first adopts the newest succeeded build-map task for the repo (task records
 // survive restarts) and writes map.json from it once.
 import { readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -20,6 +20,8 @@ export interface BuildMapInput {
   repoName: string;
   repoPath: string;
   builtFrom: string | null;
+  /** The repo is our own clone of a URL: its git tools may fetch file contents the clone left out. */
+  cloned?: boolean;
   /** Carry matching log entries over to the new map instead of starting an empty log. */
   keepProgress?: boolean;
 }
@@ -143,7 +145,7 @@ export class MapStore {
 
   /** One queue for adoption and log writes, so a log entry never lands in a newer map's log. */
   private serialize<T>(fn: () => Promise<T>): Promise<T> {
-    const run = this.queue.then(fn, fn);
+    const run = this.queue.then(fn);
     this.queue = run.catch(() => undefined);
     return run;
   }
@@ -251,13 +253,15 @@ export class MapStore {
     };
     // Any log here belongs to another map (or one whose map.json was lost): its ids no
     // longer line up, so set it aside. A fresh start begins an empty log; keepProgress
-    // starts it with the entries whose problem titles still match, renumbered.
+    // starts it with the entries whose problem titles still match, renumbered. So does a
+    // lost or unreadable map.json: the log may belong to this very build, and then every
+    // title matches and nothing is lost.
     // The old log is copied aside, then log.md is replaced in one atomic write, so a crash
     // at any point leaves either the old log (and a repeat adoption) or the new one.
     const oldLog = await readLog(this.logFile(repoId));
     if (oldLog) {
       await this.archiveLog(repoId, oldLog);
-      const carried = input.keepProgress ? carryOverLog(oldLog, map.decisions) : "";
+      const carried = input.keepProgress || !stored ? carryOverLog(oldLog, map.decisions) : "";
       if (carried) await writeFileAtomic(this.logFile(repoId), carried);
       else await rm(this.logFile(repoId), { force: true });
     }

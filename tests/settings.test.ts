@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { after, test } from "node:test";
 import { DEFAULT_SETTINGS, parseSettings, SettingsStore } from "../src/settings.ts";
 import { removeDir, tempDir } from "./helpers.ts";
@@ -37,6 +36,15 @@ test("bad input is rejected with a readable message and leaves the saved file al
   await assert.rejects(s.save({ defaultRepo: "x".repeat(1001) }), /longer than 1000/);
   await assert.rejects(s.save({ checkUpdates: "yes" }), /checkUpdates must be true or false/);
   assert.equal((await s.get()).defaultMode, "ask");
+});
+
+test("a default repo with a token in its URL is refused, and one saved earlier is not used", async () => {
+  const s = store();
+  const withToken = { defaultMode: "auto", defaultRepo: "https://me:ghp_token@github.com/user/x", checkUpdates: true };
+  await assert.rejects(s.save(withToken), /holds a password or token/);
+  assert.equal(existsSync(s.file), false);
+  writeFileSync(s.file, JSON.stringify(withToken));
+  assert.equal((await s.get()).defaultRepo, "");
 });
 
 test("missing fields fall back to defaults", () => {

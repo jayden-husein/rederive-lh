@@ -17,7 +17,7 @@ before(() => {
 });
 
 test("dist has the runtime layout LearnHarness expects", () => {
-  for (const file of ["manifest.json", "backend.cjs", "main.js", "styles.css"]) {
+  for (const file of ["manifest.json", "backend.cjs", "main.js", "styles.css", "LICENSE", "THIRD_PARTY.md"]) {
     assert.ok(existsSync(join(dist, file)), `missing dist/${file}`);
   }
   assert.equal(existsSync(join(dist, "data")), false);
@@ -84,6 +84,7 @@ test("backend registers the worker, tools, instructions and frontend operations"
   assert.deepEqual(active().map((i) => i.agents), [["prober"], ["teacher"]]);
   assert.match(active()[0]!.text, /Pick the mode from the learner's words/);
   assert.deepEqual([...handlers.keys()].sort(), [
+    "cancel-start",
     "check-update",
     "clear-start",
     "get-log",
@@ -120,6 +121,12 @@ test("backend registers the worker, tools, instructions and frontend operations"
   await assert.rejects(Promise.resolve(start({ chatId: "c", source: "  " })), /Enter a folder path or git URL/);
   await assert.rejects(Promise.resolve(start({ source: "C:\\x" })), /chat id is required/);
   await assert.rejects(Promise.resolve(start({ chatId: "c", source: join(data, "missing") })), /Folder not found/);
+  // Closing the dialog while the repo opens: nothing is recorded, the mode stays, no restart note waits.
+  const opening = Promise.resolve(start({ chatId: "c", source: data }));
+  assert.equal(await handlers.get("cancel-start")!({ chatId: "c" }), null);
+  await assert.rejects(opening, /cancelled/i);
+  assert.equal(await handlers.get("pending-start")!({ chatId: "c" }), null);
+  assert.equal(((await handlers.get("get-log")!({ chatId: "c" })) as { repoName: string | null }).repoName, null);
   removeDir(data);
 
   assert.deepEqual(workers.map((w) => w.id), ["build-map"]);

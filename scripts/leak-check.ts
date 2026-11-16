@@ -10,6 +10,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import type { StoredMap } from "../src/map.ts";
+import { repoDataDir } from "../src/map-store.ts";
 import { findLeaks } from "./leaks.ts";
 import { DEFAULT_CHATS_DIR, PROJECT_ROOT, readChat } from "./transcripts.ts";
 
@@ -29,7 +30,7 @@ if (!mapFile) {
     console.error(`Chat ${chat.id} has no repo in data/sessions.json; pass --map <map.json>.`);
     process.exit(2);
   }
-  mapFile = join(PROJECT_ROOT, "data", "repos", repoId, "map.json");
+  mapFile = join(repoDataDir(join(PROJECT_ROOT, "data"), repoId), "map.json");
 }
 const map = JSON.parse(await readFile(mapFile, "utf8")) as StoredMap;
 
